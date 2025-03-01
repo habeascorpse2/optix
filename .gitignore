@@ -1,0 +1,16 @@
+build/
+SDK/build/
+SDK/snapshots/
+./SDK/bin
+SDK/bin
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+SDK/lib/
+SDK/lib/*
+SDK/bin/optixMeshViewer
+SDK/lib/libsutil_7_sdk.so
+SDK/lib/ptx/sutil_generated_whitted.cu.optixir
+SDK/optixMeshViewer/CMakeFiles/optixMeshViewer.dir/optixMeshViewer.cpp.o
+SDK/sutil/CMakeFiles/sutil_7_sdk.dir/Scene.cpp.o

@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC    -Wall -Wsign-compare -Wno-multichar  -Wno-cpp -Wstrict-prototypes -Wdeclaration-after-statement -fPIC -DM_PI=3.14159265358979323846 -O0 -g3 -shared -Wl,-soname,libglad.so -o ../lib/libglad.so CMakeFiles/glad.dir/glad/glad.c.o  -lOpenGL -lGLX -lGLU
