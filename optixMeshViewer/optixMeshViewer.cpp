@@ -579,49 +579,10 @@ int main( int argc, char* argv[] )
     // Parse command line options
     //
     std::string outfile;
-    std::string infile = sutil::sampleDataFilePath( "teapot-only.glb" ); 
-    Gaussian gaussian((uint) width,(uint) height,
-            sutil::sampleDataFilePath("quarto3_novo2.ply"), 
-            3, false, 0);
-
-    params.g_cov3d = gaussian.cov3d_cuda;
-    params.g_opacity = gaussian.opacity_cuda;
-    params.g_pos = gaussian.pos_cuda;
-    params.g_shs = gaussian.shs_cuda;
-    params.gcount = gaussian.count;
-    // params.g_scale = gaussian.scale_cuda;
-    // params.g_rotation = gaussian.rot_cuda;
-    std::cout<<"Count Gaussians:" << gaussian.count << std::endl;
-
-    Gaussian gaussianLow((uint) width,(uint) height,
-            sutil::sampleDataFilePath("quarto3_novo2.ply"), 
-            3, false, 0);
-    params.g_cov3d_low = gaussianLow.cov3d_cuda;
-    params.g_opacity_low = gaussianLow.opacity_cuda;
-    params.g_pos_low = gaussianLow.pos_cuda;
-    params.g_shs_low = gaussianLow.shs_cuda;
-    // params.g_scale_low = gaussianLow.scale_cuda;
-    // params.g_rotation_low = gaussianLow.rot_cuda;
-
-    params.scaleFactor = 1.0f;
-
-    updateProjectionMatrix();
+    std::string infile;
+    std::string gaussianFile1;
+    std::string gaussianFile2;
     
-    g_position = glm::vec3(0, 0, 0); //Zerado
-    // g_position = glm::vec3(4.416, 0.5101, 0.13); //Sponza_claro
-    // g_position = glm::vec3(4.8, 1.7, -1.43); //Quarto
-    // g_rotation = glm::vec3(-180, -150, -9.3);
-    g_rotation = glm::vec3(0, 0, 0); // Sponza_claro
-    
-    g_scale =    glm::vec3(1.f, 1.f, 1.f);
-    // g_scale =    make_float3(-0.8f, 0.8f, 0.8f);
-    params.gn = 1;
-    params.mode = 0;
-    updateModel();
-
-    octree = new oct::OctreeGaussian(gaussian, gaussianLow);
-    params.octree = octree->deviceOctree;
-    camera.setFovY(60.f);
     
     
 
@@ -637,11 +598,23 @@ int main( int argc, char* argv[] )
         {
             output_buffer_type = sutil::CUDAOutputBufferType::CUDA_DEVICE;
         }
-        else if( arg == "--model" )
+        else if( arg == "--model" || arg == "-m")
         {
             if( i >= argc - 1 )
                 printUsageAndExit( argv[0] );
             infile = argv[++i];
+        }
+        else if( arg == "-g1")
+        {
+            if( i >= argc - 1 )
+                printUsageAndExit( argv[0] );
+            gaussianFile1 = argv[++i];
+        }
+        else if( arg == "-g2")
+        {
+            if( i >= argc - 1 )
+                printUsageAndExit( argv[0] );
+            gaussianFile2 = argv[++i];
         }
         else if( arg == "--file" || arg == "-f" )
         {
@@ -676,8 +649,53 @@ int main( int argc, char* argv[] )
 
     try
     {
+
+        // std::string infile = sutil::sampleDataFilePath( "teapot-only_rough.glb" ); 
+        Gaussian gaussian((uint) width,(uint) height,
+            sutil::sampleDataFilePath(gaussianFile1.c_str()), 
+            3, false, 0);
+
+        params.g_cov3d = gaussian.cov3d_cuda;
+        params.g_opacity = gaussian.opacity_cuda;
+        params.g_pos = gaussian.pos_cuda;
+        params.g_shs = gaussian.shs_cuda;
+        params.gcount = gaussian.count;
+        // params.g_scale = gaussian.scale_cuda;
+        // params.g_rotation = gaussian.rot_cuda;
+        std::cout<<"Count Gaussians 1:" << gaussian.count << std::endl;
+
+        Gaussian gaussianLow((uint) width,(uint) height,
+                sutil::sampleDataFilePath(gaussianFile2.c_str()), 
+                3, false, 0);
+        params.g_cov3d_low = gaussianLow.cov3d_cuda;
+        params.g_opacity_low = gaussianLow.opacity_cuda;
+        params.g_pos_low = gaussianLow.pos_cuda;
+        params.g_shs_low = gaussianLow.shs_cuda;
+        // params.g_scale_low = gaussianLow.scale_cuda;
+        // params.g_rotation_low = gaussianLow.rot_cuda;
+
+        params.scaleFactor = 1.0f;
+
+        updateProjectionMatrix();
+        
+        g_position = glm::vec3(0, 0, 0); //Zerado
+        // g_position = glm::vec3(4.416, 0.5101, 0.13); //Sponza_claro
+        // g_position = glm::vec3(4.8, 1.7, -1.43); //Quarto
+        // g_rotation = glm::vec3(-180, -150, -9.3);
+        g_rotation = glm::vec3(0, 0, 0); // Sponza_claro
+        
+        g_scale =    glm::vec3(1.f, 1.f, 1.f);
+        // g_scale =    make_float3(-0.8f, 0.8f, 0.8f);
+        params.gn = 1;
+        params.mode = 0;
+        updateModel();
+
+        octree = new oct::OctreeGaussian(gaussian, gaussianLow);
+        params.octree = octree->deviceOctree;
+        camera.setFovY(60.f);
+
         sutil::Scene scene;
-        sutil::loadScene( infile.c_str(), scene );
+        sutil::loadScene( sutil::sampleDataFilePath(infile.c_str()), scene );
         scene.finalize();
 
         OPTIX_CHECK( optixInit() ); // Need to initialize function table
