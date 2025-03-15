@@ -224,7 +224,6 @@ class Gaussian {
 	std::vector<float> opacity;
 	std::vector<SHs<3>> shs;
 	std::vector<std::array<float, 6>> cov3d;
-	// std::vector<std::array<float, 9>> cov3d;
 
 	
 	private:
