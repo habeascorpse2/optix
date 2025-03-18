@@ -19,7 +19,7 @@ if (cudaPeekAtLastError() != cudaSuccess) \
 	std::cerr << cudaGetErrorString(cudaGetLastError()) << std::endl;
 
 #define MAX_RESULTS 55
-#define MIN_SIZE .35f
+#define MIN_SIZE .6f
 // Estrutura do cubo
 
 // Função para verificar erros CUDA

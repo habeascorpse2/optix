@@ -102,10 +102,10 @@ const unsigned int NUM_ATTRIBUTE_VALUES = 4u;
 const unsigned int NUM_PAYLOAD_VALUES   = 6u;
 const unsigned int MAX_TRACE_DEPTH      = 2u;
 
-const unsigned int GSM_MAX_SIZE = 200;
+const unsigned int GSM_MAX_SIZE = 120;
 // const unsigned int gaussian_block = 200;
-const unsigned int WIDTH = 1;
-const unsigned int HEIGHT = 1;
+const unsigned int WIDTH = 800;
+const unsigned int HEIGHT = 600;
 #define BLOCK_X  16
 #define BLOCK_Y  16
 

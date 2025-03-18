@@ -375,63 +375,7 @@ class Gaussian {
 			return count;
 		}
 
-		glm::mat3 ComputeCov3D2(int i)
-		{
-				
-			glm::mat3 S = glm::mat3(1.0f);
-			S[0][0] = scale[i].scale[0];
-			S[1][1] = scale[i].scale[1];
-			S[2][2] = scale[i].scale[2];
-
-			float r = rot[i].rot[0];
-			float x = rot[i].rot[1];
-			float y = rot[i].rot[2];
-			float z = rot[i].rot[3];
-
-			glm::mat3 R = glm::mat3(
-				1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z), 2.f * (x * z + r * y),
-				2.f * (x * y + r * z), 1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
-				2.f * (x * z - r * y), 2.f * (y * z + r * x), 1.f - 2.f * (x * x + y * y)
-			);
-
-			glm::mat3 M = S * R;
-			glm::mat3 sigma = transpose(M) * M;
-			return sigma;
-		}
-
-		std::vector<std::array<float, 9>> ComputeCov3Ds(int count)
-		{
-			std::vector<std::array<float, 9>> cov3ds;
-			cov3ds.reserve(count);
-			for (int i = 0; i < count; i++) {
-				auto mcov = ComputeCov3D(i);
-				mcov = mcov.inverse();
-				// mcov = glm::inverse(mcov);
-				std::array<float, 9> cov;
-				cov[0] = mcov(0);
-				cov[1] = mcov(1);
-				cov[2] = mcov(2);
-				cov[3] = mcov(3);
-				cov[4] = mcov(4);
-				cov[5] = mcov(5);
-				cov[6] = mcov(6);
-				cov[7] = mcov(7);
-				cov[8] = mcov(8);
-				// cov[0] = mcov[0][0];
-				// cov[1] = mcov[0][1];
-				// cov[2] = mcov[0][2];
-				// cov[3] = mcov[1][0];
-				// cov[4] = mcov[1][1];
-				// cov[5] = mcov[1][2];
-				// cov[6] = mcov[2][0];
-				// cov[7] = mcov[2][1];
-				// cov[8] = mcov[2][2];
-				cov3ds.push_back(cov);
-			}
-			return cov3ds;
-		}
-
-
+		
 		std::vector<std::array<float, 6>> ComputeCov3D(const std::vector<Scale>& scales, const std::vector<Rot>& rotations, float scale_modifier)
 		{
 			std::vector<std::array<float, 6>> cov3ds;
@@ -469,6 +413,57 @@ class Gaussian {
 			return cov3ds;
 		}
 
+		// std::vector<std::array<float, 9>> ComputeCov3D(const std::vector<Scale>& scales, const std::vector<Rot>& rotations, float scale_modifier)
+		// {
+		// 	std::vector<std::array<float, 9>> cov3ds;
+		// 	cov3ds.reserve(scales.size());
+
+		// 	for (size_t i = 0; i < scales.size(); i++) {
+		// 		std::array<float, 9> cov;
+				
+		// 		// Construir a matriz de escala S
+		// 		glm::mat3 S(1.0f);
+		// 		S[0][0] = scale_modifier * scales[i].scale[0];
+		// 		S[1][1] = scale_modifier * scales[i].scale[1];
+		// 		S[2][2] = scale_modifier * scales[i].scale[2];
+
+		// 		// Obter os componentes do quaternion (r, x, y, z)
+		// 		float r = rotations[i].rot[0];
+		// 		float x = rotations[i].rot[1];
+		// 		float y = rotations[i].rot[2];
+		// 		float z = rotations[i].rot[3];
+
+		// 		// Construir a matriz de rotação R a partir do quaternion
+		// 		glm::mat3 R = glm::mat3(
+		// 			1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z),       2.f * (x * z + r * y),
+		// 			2.f * (x * y + r * z),       1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
+		// 			2.f * (x * z - r * y),       2.f * (y * z + r * x),       1.f - 2.f * (x * x + y * y)
+		// 		);
+
+		// 		// Calcular M e a matriz de covariância sigma = transpose(M)*M
+		// 		glm::mat3 M = S * R;
+		// 		glm::mat3 sigma = glm::transpose(M) * M;
+
+		// 		// Inverter sigma para obter sigmaInv (já que a GPU espera a matriz invertida)
+		// 		glm::mat3 sigmaInv = glm::inverse(sigma);
+
+		// 		// Armazenar sigmaInv em ordem row-major (GPU espera float[9] em row-major)
+		// 		cov[0] = sigmaInv[0][0];
+		// 		cov[1] = sigmaInv[1][0];
+		// 		cov[2] = sigmaInv[2][0];
+
+		// 		cov[3] = sigmaInv[0][1];
+		// 		cov[4] = sigmaInv[1][1];
+		// 		cov[5] = sigmaInv[2][1];
+
+		// 		cov[6] = sigmaInv[0][2];
+		// 		cov[7] = sigmaInv[1][2];
+		// 		cov[8] = sigmaInv[2][2];
+
+		// 		cov3ds.push_back(cov);
+		// 	}
+		// 	return cov3ds;
+		// }
 
 
 };

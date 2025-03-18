@@ -306,11 +306,13 @@ void updateModel( ) {
     glm::mat4 m1 = glm::mat4(1.0f);
     // params.g_position = make_float3(g_position.x, g_position.y, g_position.z);
 
-    params.modelMatrix = glm::rotate(m1, glm::radians(g_rotation.x), {1.0f, 0.0f, 0.0f});
+    params.modelMatrix = glm::scale(m1, g_scale);
+    params.modelMatrix = glm::translate(params.modelMatrix, g_position);
+    params.modelMatrix = glm::rotate(params.modelMatrix, glm::radians(g_rotation.x), {1.0f, 0.0f, 0.0f});
     params.modelMatrix = glm::rotate(params.modelMatrix, glm::radians(g_rotation.y), {0.0f, 1.0f, 0.0f});
     params.modelMatrix = glm::rotate(params.modelMatrix, glm::radians(g_rotation.z), {0.0f, 0.0f, 1.0f});
-    params.modelMatrix = glm::translate(params.modelMatrix, g_position);
-    params.modelMatrix = glm::scale(params.modelMatrix, g_scale);
+    
+    
     
 }
 
@@ -442,12 +444,6 @@ void updateProjectionMatrix() {
     float fovy = glm::radians(fov); // Convertendo graus para radianos
     
     auto pm = glm::perspectiveFov(fovy,(float) whitted::WIDTH,(float) whitted::HEIGHT, near, far);
-    // pm[1][1] *= -1;  // Inverting Y for Vulkan (not needed with perspectiveVK).
-    // pm[2] *= -1;
-
-    // for (int i = 0; i < 4; i++)
-    //     for (int j=0; j< 4; j++)
-    //         params.projMatrix[(i*4) +j] = pm[i][j];
 
     params.projMatrix = pm;
 

@@ -272,22 +272,28 @@ extern "C" __global__ void __closesthit__radiance()
         roughNormal.x -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
         roughNormal.y -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
         roughNormal.z -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
-        glm::mat4 modelMatrix = whitted::params.modelMatrix;
+        glm::mat4 modelMatrix = glm::inverse(whitted::params.modelMatrix);
         glm::mat4 projMatrix = whitted::params.projMatrix;
+
         
         glm::vec3 R = f2c(reflect(ray_dir,roughNormal));
         glm::vec3 Rn = glm::normalize(glm::vec3(modelMatrix * glm::vec4(R, 0)));
         glm::vec3 Pn = f2c(P);
         Pn = glm::vec3(modelMatrix * glm::vec4(Pn, 1));
-        //Colmap to CUDA positions
-        Pn.y *= -1;
-        Pn.x *= -1;
-        Pn.z *= -1;
 
-        //Projection fix
+        //Colmap to CUDA positions
+        // Pn.x *= -1;
+        // Rn.x *= -1;
+        // Pn.y *= -1;
+        // Rn.y *= -1;
+        // Pn.z *= -1;
+        // Rn.z *= -1;
+
+        // //Projection fix
         projMatrix[0] *= -1;
         projMatrix[1] *= -1;
 
+        
         glm::vec3 up = {0, 1, 0};
         glm::mat4 viewMat = lookAtGLM(Pn, Pn + Rn, up);
         unsigned int highGaussian = whitted::getPayloadHighGaussian();
@@ -302,13 +308,8 @@ extern "C" __global__ void __closesthit__radiance()
             int size = 0;
             for (int idx = aux; idx < whitted::params.gn + aux; idx++) {
                 glm::vec3 ponto;
-                if (highGaussian > 0)
                     ponto = glm::vec3(whitted::params.g_pos[idx * 3], whitted::params.g_pos[(idx*3)+1], whitted::params.g_pos[(idx*3)+2]);
-                else
-                    ponto = glm::vec3(whitted::params.g_pos_low[idx * 3], whitted::params.g_pos_low[(idx*3)+1], whitted::params.g_pos_low[(idx*3)+2]);
 
-                ponto.x *= -1;
-                
                 glm::vec3 p_view = transformPoint4x3(ponto, viewMat);
                 
                 if (p_view.z > 0.2f) {
@@ -403,7 +404,7 @@ extern "C" __global__ void __closesthit__radiance()
 
             highGaussian=1;
             level = 0;
-
+            
             count = searchIntersectingNodes(nodes, Pn, Rn, &octStack[0], viewMat, level);
             whitted::DepthGaussian dtree[whitted::GSM_MAX_SIZE];
 
@@ -412,8 +413,8 @@ extern "C" __global__ void __closesthit__radiance()
             int size = 0;
             float T = 1.0f;
 
-            int k   = 6; //K Nearest Neighbors
-            int k_i = 8;  // count K
+            int k   = 10; //K First Gaussians
+            int k_i = 0;  // count K
 
             while (count > 0 && whitted::params.mode == 2) { 
 
@@ -438,9 +439,6 @@ extern "C" __global__ void __closesthit__radiance()
                         idx = node.cubes_1[i];
                         ponto = glm::vec3(whitted::params.g_pos_low[idx * 3], whitted::params.g_pos_low[(idx*3)+1], whitted::params.g_pos_low[(idx*3)+2]);
                     }
-
-                    ponto.x *= -1;
-                    
                     glm::vec3 p_view = transformPoint4x3(ponto, viewMat);
                     
                     if (p_view.z > 0.2f) {
@@ -451,10 +449,10 @@ extern "C" __global__ void __closesthit__radiance()
 
                         float cov3D[6];
 
-                        if (whitted::params.mode == 3) {
-                            computeCov3D(glm::vec3(0.005f), whitted::params.scaleFactor, glm::vec4(1.0f), cov3D);
-                        }
-                        else {
+                        // if (whitted::params.mode == 3) {
+                        //     computeCov3D(glm::vec3(0.005f), whitted::params.scaleFactor, glm::vec4(1.0f), cov3D);
+                        // }
+                        // else {
                             if (level == 0) {
                                 cov3D[0] = whitted::params.g_cov3d[idx * 6];
                                 cov3D[1] = whitted::params.g_cov3d[idx * 6 + 1];
@@ -471,7 +469,7 @@ extern "C" __global__ void __closesthit__radiance()
                                 cov3D[4] = whitted::params.g_cov3d_low[idx * 6 + 4];
                                 cov3D[5] = whitted::params.g_cov3d_low[idx * 6 + 5];
                             }
-                        }
+                        // }
 
                         float3 cov =  computeCov2D(p_view, whitted::params.focal.x, whitted::params.focal.y, whitted::params.tan_fovx, whitted::params.tan_fovy, &cov3D[0], viewMat);
                         float det = (cov.x * cov.z - cov.y * cov.y);
@@ -519,9 +517,6 @@ extern "C" __global__ void __closesthit__radiance()
                                     d.z = p_view.z;
                                     GSM_insert(d, &dtree[0], size);
                                 }
-
-                                
-                                // result += make_float3(d.c.x, d.c.y, d.c.z) * d.c.w;
                             }
                             
                         }

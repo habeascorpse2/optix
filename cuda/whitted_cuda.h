@@ -406,7 +406,6 @@ __device__ float3 computeCov2D(glm::vec3& t, float focal_x, float focal_y, float
 		cov3D[2], cov3D[4], cov3D[5]);
 
 	glm::mat3 cov = glm::transpose(T) * glm::transpose(Vrk) * T;
-    // glm::mat3 cov = glm::transpose(T) * T;
 
 	// Apply low-pass filter: every Gaussian should be at least
 	// one pixel wide/high. Discard 3rd row and column.
@@ -414,60 +413,6 @@ __device__ float3 computeCov2D(glm::vec3& t, float focal_x, float focal_y, float
 	cov[1][1] += 0.3f;
 	return { float(cov[0][0]), float(cov[0][1]), float(cov[1][1]) };
 }
-
-// __device__ float3 computeCov2D(glm::vec3& t, float focal_x, float focal_y, float tan_fovx, float tan_fovy, const float* cov3D, glm::mat4& viewmatrix) {
-
-// 	// Clamping dos valores de t.x e t.y (como no código original)
-// 	const float limx = 1.3f * tan_fovx;
-// 	const float limy = 1.3f * tan_fovy;
-// 	const float txtz = t.x / t.z;
-// 	const float tytz = t.y / t.z;
-// 	t.x = min(limx, max(-limx, txtz)) * t.z;
-// 	t.y = min(limy, max(-limy, tytz)) * t.z;
-
-// 	// Calcula o Jacobiano J da projeção (2x3, representado como uma mat3 com a última linha zero)
-// 	glm::mat3 J = glm::mat3(
-// 	focal_x / t.z,      0.0f,  -(focal_x * t.x) / (t.z * t.z),
-// 	0.0f,      focal_y / t.z,  -(focal_y * t.y) / (t.z * t.z),
-// 	0.0f,           0.0f,           0.0f
-// 	);
-
-// 	// Extrai a parte rotacional da view matrix para transformar a covariância do espaço mundo para view space.
-//     glm::mat3 W = glm::mat3(
-//     viewmatrix[0][0], viewmatrix[1][0], viewmatrix[2][0],
-//     viewmatrix[0][1], viewmatrix[1][1], viewmatrix[2][1],
-//     viewmatrix[0][2], viewmatrix[1][2], viewmatrix[2][2]);
-
-// 	// Reconstrói a covariância 3D simétrica a partir de cov3D
-// 	glm::mat3 Vrk = glm::mat3(
-// 		cov3D[0], cov3D[1], cov3D[2],
-// 		cov3D[1], cov3D[3], cov3D[4],
-// 		cov3D[2], cov3D[4], cov3D[5]
-// 	);
-
-// 	// Transforma a covariância para o espaço de visualização:
-// 	glm::mat3 V_view = W * Vrk * glm::transpose(W);
-
-// 	// Agora, projeta para o espaço 2D usando o Jacobiano:
-// 	// Σ₂D = J * V_view * Jᵀ.
-// 	// Como J é efetivamente 2x3 (última linha zero), podemos computar manualmente a matriz 2x2.
-// 	float c00 = 0.0f, c01 = 0.0f, c11 = 0.0f;
-// 	for (int k = 0; k < 3; k++){
-// 		for (int l = 0; l < 3; l++){
-// 			float a0 = J[0][k];  // componente (0,k) de J
-// 			float a1 = J[1][k];  // componente (1,k) de J
-// 			float v = V_view[k][l];
-// 			float b0 = J[0][l];
-// 			float b1 = J[1][l];
-// 			c00 += a0 * v * b0;
-// 			c01 += a0 * v * b1;
-// 			c11 += a1 * v * b1;
-// 		}
-// 	}
-// 	// Retorna os componentes necessários: cov[0][0], cov[0][1] e cov[1][1]
-// 	return make_float3(c00, c01, c11);
-// }
-
 __forceinline__ __device__ void getRect(const float2 p, int max_radius, uint2& rect_min, uint2& rect_max, dim3 grid)
 {
 	rect_min = {
@@ -537,50 +482,6 @@ __forceinline__ __device__ float3 get_GaussianRGB(float3 d, int i, int& level) {
     return clamp(rgb, 0.0, 1.0);
 }
 
-__forceinline__ __device__ whitted::Matrix4x4 createLookAt(float3 eye, float3 center, float3 up)
-{
-    float3 f = normalize(center - eye);
-    float3 r = normalize(cross(up, f));
-    float3 u = cross(f, r);
-
-    whitted::Matrix4x4 result = whitted::Matrix4x4({
-        r.x, r.y, r.z, 0.0,
-        u.x, u.y, u.z, 0.0,
-        -f.x, -f.y, -f.z, 0.0,
-        0.0, 0.0, 0.0, 1.0
-    });
-
-    result = result.transpose();
-    result[3 * 4 + 0] = -eye.x;
-    result[3 * 4 + 1] = -eye.y;
-    result[3 * 4 + 2] = eye.z;
-    result[3 * 4 + 3] = 1.0f;
-
-    return result;
-}
-
-__forceinline__ __device__ glm::mat4 createLookAt(glm::vec3 eye, glm::vec3 center, glm::vec3 up)
-{
-    glm::vec3 f = glm::normalize(center - eye);
-    glm::vec3 r = glm::normalize(cross(up, f));
-    glm::vec3 u = glm::cross(f, r);
-
-    glm::mat4 result = glm::mat4(
-        r.x, r.y, r.z, 0.0,
-        u.x, u.y, u.z, 0.0,
-        -f.x, -f.y, -f.z, 0.0,
-        0.0, 0.0, 0.0, 1.0
-    );
-
-    result = glm::transpose(result);
-    result[3][0] = -eye.x;
-    result[3][1] = -eye.y;
-    result[3][2] = eye.z;
-    result[3][3] = 1.0f;
-
-    return result;
-}
-
 __device__ glm::mat4 lookAtGLM(const glm::vec3& eye, glm::vec3 center, const glm::vec3 up)
 	{
 		glm::vec3 f(glm::normalize(center - eye));
@@ -611,30 +512,38 @@ __device__ float3 c2f(glm::vec3 a) {
     return make_float3(a.x, a.y, a.z);
 }
 
-__forceinline__ __device__ whitted::Matrix4x4 customLookAt(float3 position, float3 direction, float3 up) {
-  // Normaliza o vetor de direção
-    float3 forward = normalize(direction);
+__device__ __forceinline__ void invert3x3(const float* m, float inv[9])
+{
+    float a = m[0], b = m[1], c = m[2];
+    float d = m[3], e = m[4], f = m[5];
+    float g = m[6], h = m[7], i = m[8];
 
-    // Calcula o vetor "right" usando o produto cruzado entre o vetor de direção e o vetor "up"
-    float3 right = normalize(cross(up, forward));
+    float det = a*(e*i - f*h) - b*(d*i - f*g) + c*(d*h - e*g);
 
-    // Calcula o vetor "up" corrigido
-    float3 correctedUp = cross(forward, right);
-    whitted::Matrix4x4 one({
-        1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, 1.0f,
-        });
+    // Em caso de quase-singularidade, tratamos de forma simples:
+    if (fabsf(det) < 1e-12f)
+    {
+        // Aqui, poderíamos tratar erros ou ajustar a matriz.
+        // Para fins de exemplo, setamos a identidade.
+        inv[0] = 1.f; inv[1] = 0.f; inv[2] = 0.f;
+        inv[3] = 0.f; inv[4] = 1.f; inv[5] = 0.f;
+        inv[6] = 0.f; inv[7] = 0.f; inv[8] = 1.f;
+        return;
+    }
 
-    // Cria e retorna a matriz de visualização
-    return whitted::Matrix4x4({
-        right.x, right.y, right.z, 0.0f,
-        correctedUp.x, correctedUp.y, correctedUp.z, 0.0f,
-        -forward.x, forward.y, forward.z, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f
-    }) * one.translate(-position);
+    float invDet = 1.0f / det;
+
+    inv[0] =  (e*i - f*h) * invDet;
+    inv[1] = -(b*i - c*h) * invDet;
+    inv[2] =  (b*f - c*e) * invDet;
+    inv[3] = -(d*i - f*g) * invDet;
+    inv[4] =  (a*i - c*g) * invDet;
+    inv[5] = -(a*f - c*d) * invDet;
+    inv[6] =  (d*h - e*g) * invDet;
+    inv[7] = -(a*h - b*g) * invDet;
+    inv[8] =  (a*e - b*d) * invDet;
 }
+
 
 __forceinline__ __device__ float ndc2Pix(float v, float S) {
     return ((v + 1.) * S - 1.) * .5;
