@@ -277,17 +277,13 @@ extern "C" __global__ void __closesthit__radiance()
 
         
         glm::vec3 R = f2c(reflect(ray_dir,roughNormal));
-        glm::vec3 Rn = glm::normalize(glm::vec3(modelMatrix * glm::vec4(R, 0)));
+        glm::vec3 Rn = glm::vec3(modelMatrix * glm::vec4(R, 0));
         glm::vec3 Pn = f2c(P);
         Pn = glm::vec3(modelMatrix * glm::vec4(Pn, 1));
 
         //Colmap to CUDA positions
-        // Pn.x *= -1;
-        // Rn.x *= -1;
-        // Pn.y *= -1;
-        // Rn.y *= -1;
-        // Pn.z *= -1;
-        // Rn.z *= -1;
+        Pn.x *= -1;
+        Rn.x *= -1;
 
         // //Projection fix
         projMatrix[0] *= -1;
@@ -413,8 +409,11 @@ extern "C" __global__ void __closesthit__radiance()
             int size = 0;
             float T = 1.0f;
 
-            int k   = 10; //K First Gaussians
+            int k   = 16; //K First Gaussians
             int k_i = 0;  // count K
+            // if (count >= 15) {
+            //     count = 15;
+            // }
 
             while (count > 0 && whitted::params.mode == 2) { 
 
@@ -439,86 +438,92 @@ extern "C" __global__ void __closesthit__radiance()
                         idx = node.cubes_1[i];
                         ponto = glm::vec3(whitted::params.g_pos_low[idx * 3], whitted::params.g_pos_low[(idx*3)+1], whitted::params.g_pos_low[(idx*3)+2]);
                     }
-                    glm::vec3 p_view = transformPoint4x3(ponto, viewMat);
-                    
-                    if (p_view.z > 0.2f) {
+                    glm::vec3 hsize = {whitted::params.g_hsize[idx * 3], whitted::params.g_hsize[idx * 3 + 1], whitted::params.g_hsize[idx * 3 + 2]};
+                    Cube cube = {ponto, hsize, 0};
+                    if (rayIntersectsCube1(cube, Pn,  Rn)) {
+                        glm::vec3 p_view = transformPoint4x3(ponto, viewMat);
+                        
+                        if (p_view.z > 0.2f) {
 
-                        glm::vec4 p_hom = transformPoint4x4(p_view, projMatrix);
-                        float p_w = 1.0f / (p_hom.w + 0.0000001f);
-                        glm::vec3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
+                            glm::vec4 p_hom = transformPoint4x4(p_view, projMatrix);
+                            float p_w = 1.0f / (p_hom.w + 0.0000001f);
+                            glm::vec3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
 
-                        float cov3D[6];
+                            float cov3D[6];
 
-                        // if (whitted::params.mode == 3) {
-                        //     computeCov3D(glm::vec3(0.005f), whitted::params.scaleFactor, glm::vec4(1.0f), cov3D);
-                        // }
-                        // else {
-                            if (level == 0) {
-                                cov3D[0] = whitted::params.g_cov3d[idx * 6];
-                                cov3D[1] = whitted::params.g_cov3d[idx * 6 + 1];
-                                cov3D[2] = whitted::params.g_cov3d[idx * 6 + 2];
-                                cov3D[3] = whitted::params.g_cov3d[idx * 6 + 3];
-                                cov3D[4] = whitted::params.g_cov3d[idx * 6 + 4];
-                                cov3D[5] = whitted::params.g_cov3d[idx * 6 + 5];
-                            }
-                            else {
-                                cov3D[0] = whitted::params.g_cov3d_low[idx * 6];
-                                cov3D[1] = whitted::params.g_cov3d_low[idx * 6 + 1];
-                                cov3D[2] = whitted::params.g_cov3d_low[idx * 6 + 2];
-                                cov3D[3] = whitted::params.g_cov3d_low[idx * 6 + 3];
-                                cov3D[4] = whitted::params.g_cov3d_low[idx * 6 + 4];
-                                cov3D[5] = whitted::params.g_cov3d_low[idx * 6 + 5];
-                            }
-                        // }
-
-                        float3 cov =  computeCov2D(p_view, whitted::params.focal.x, whitted::params.focal.y, whitted::params.tan_fovx, whitted::params.tan_fovy, &cov3D[0], viewMat);
-                        float det = (cov.x * cov.z - cov.y * cov.y);
-
-                        constexpr float h_var = 0.3f;
-                        cov.x += h_var;
-                        cov.z += h_var;
-                        const float det_cov_plus_h_cov = cov.x * cov.z - cov.y * cov.y;
-                        float h_convolution_scaling = sqrt(max(0.000025f, det / det_cov_plus_h_cov)); // max for numerical stability
-
-                        if (det != 0.0f) {
-
-                            float det_inv = 1.f / det;
-                            float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
-                            float2 point_image = { ndc2Pix(p_proj.x, whitted::WIDTH), ndc2Pix(p_proj.y, whitted::HEIGHT) };
-                            
-                            
-                            float3 dir = c2f(glm::normalize(ponto - Pn));
-                            dir = dir / length(dir);
-                            float opacity;
-                            if (level == 0)
-                                opacity = getOpacity( whitted::params.g_opacity[idx] * h_convolution_scaling, conic, point_image);
-                            else
-                                opacity = getOpacity( whitted::params.g_opacity_low[idx] * h_convolution_scaling, conic, point_image);
-                            // float opacity = whitted::params.g_opacity[idx] * 0.1;
-                            if (opacity > 0 ) {   
-                                
-                                if (k_i >= k) {
-                                    int lvl = highGaussian -1;
-                                    float test_T = T * (1 - opacity);
-                                    if (test_T < 0.0001f) {
-                                        end = true;
-                                        break;
-                                    }
-                                    
-                                    float3 color = get_GaussianRGB(dir, idx, lvl);
-                                    result += color  * opacity * T;
-
-                                    T = test_T;
+                            // if (whitted::params.mode == 3) {
+                            //     computeCov3D(glm::vec3(0.005f), whitted::params.scaleFactor, glm::vec4(1.0f), cov3D);
+                            // }
+                            // else {
+                                if (level == 0) {
+                                    cov3D[0] = whitted::params.g_cov3d[idx * 6];
+                                    cov3D[1] = whitted::params.g_cov3d[idx * 6 + 1];
+                                    cov3D[2] = whitted::params.g_cov3d[idx * 6 + 2];
+                                    cov3D[3] = whitted::params.g_cov3d[idx * 6 + 3];
+                                    cov3D[4] = whitted::params.g_cov3d[idx * 6 + 4];
+                                    cov3D[5] = whitted::params.g_cov3d[idx * 6 + 5];
                                 }
                                 else {
-                                    whitted::DepthGaussian d;
-                                    int lvl = highGaussian -1;
-                                    d.c = make_float4(get_GaussianRGB(dir, idx, lvl), opacity);
-                                    d.z = p_view.z;
-                                    GSM_insert(d, &dtree[0], size);
+                                    cov3D[0] = whitted::params.g_cov3d_low[idx * 6];
+                                    cov3D[1] = whitted::params.g_cov3d_low[idx * 6 + 1];
+                                    cov3D[2] = whitted::params.g_cov3d_low[idx * 6 + 2];
+                                    cov3D[3] = whitted::params.g_cov3d_low[idx * 6 + 3];
+                                    cov3D[4] = whitted::params.g_cov3d_low[idx * 6 + 4];
+                                    cov3D[5] = whitted::params.g_cov3d_low[idx * 6 + 5];
                                 }
+                            // }
+
+                            float3 cov =  computeCov2D(p_view, whitted::params.focal.x, whitted::params.focal.y, whitted::params.tan_fovx, whitted::params.tan_fovy, &cov3D[0], viewMat);
+                            float det = (cov.x * cov.z - cov.y * cov.y);
+
+                            // constexpr float h_var = 0.3f;
+                            // cov.x += h_var;
+                            // cov.z += h_var;
+                            // const float det_cov_plus_h_cov = cov.x * cov.z - cov.y * cov.y;
+                            // float h_convolution_scaling = sqrt(max(0.000025f, det / det_cov_plus_h_cov)); // max for numerical stability
+
+                            if (det != 0.0f) {
+
+                                float det_inv = 1.f / det;
+                                float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
+                                float2 point_image = { ndc2Pix(p_proj.x, whitted::WIDTH), ndc2Pix(p_proj.y, whitted::HEIGHT) };
+                                
+                                
+                                float3 dir = c2f(glm::normalize(ponto - Pn));
+                                dir = dir / length(dir);
+                                float opacity;
+                                if (level == 0)
+                                    // opacity = getOpacity( whitted::params.g_opacity[idx] * h_convolution_scaling, conic, point_image);
+                                    opacity = getOpacity( whitted::params.g_opacity[idx] , conic, point_image);
+                                else
+                                    // opacity = getOpacity( whitted::params.g_opacity_low[idx] * h_convolution_scaling, conic, point_image);
+                                    opacity = getOpacity( whitted::params.g_opacity_low[idx], conic, point_image);
+                                // float opacity = whitted::params.g_opacity[idx] * 0.1;
+                                if (opacity > 0 ) {   
+                                    
+                                    if (k_i >= k) {
+                                        int lvl = highGaussian -1;
+                                        float test_T = T * (1 - opacity);
+                                        if (test_T < 0.0001f) {
+                                            end = true;
+                                            break;
+                                        }
+                                        
+                                        float3 color = get_GaussianRGB(dir, idx, lvl);
+                                        result += color  * opacity * T;
+
+                                        T = test_T;
+                                    }
+                                    else {
+                                        whitted::DepthGaussian d;
+                                        int lvl = highGaussian -1;
+                                        d.c = make_float4(get_GaussianRGB(dir, idx, lvl), opacity);
+                                        d.z = p_view.z;
+                                        GSM_insert(d, &dtree[0], size);
+                                    }
+                                }
+                                
                             }
-                            
                         }
                     }
 

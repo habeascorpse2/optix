@@ -17,25 +17,23 @@ class OctreeGaussian {
 		OctreeGaussian(Gaussian& gaussian_0, Gaussian& gaussian_1) {
 
 			// Definir o limite da Octree
-			// Cube rootCube{{0, -2.f, 0.f}, {18, 12, 18}, -1}; // Quarto
-			Cube rootCube{{0, 4.f, 3.f}, {80, 30, 80}, -1}; //Sponza
+			Cube rootCube{{0, -2.f, 0.f}, {18, 12, 18}, -1}; // Quarto
+			// Cube rootCube{{0, 4.f, 3.f}, {80, 30, 80}, -1}; //Sponza
 			octree = new Octree(rootCube.center, rootCube.half_size);
 
 			octree->buildOctree();
 			std::cout << "Copying level 0 Gaussian: " << std::endl;
 			for (int i = 0; i < gaussian_0.count; ++i) {
-				auto cov3d = gaussian_0.ComputeCov3D(i);
 				glm::vec3 pos = glm::vec3(gaussian_0.pos[i][0], gaussian_0.pos[i][1], gaussian_0.pos[i][2]);
-				glm::vec3 hsize = calculateBoundingBoxSize(cov3d, pos) * 0.35f;
+				glm::vec3 hsize = glm::vec3(gaussian_0.hsize[i][0], gaussian_0.hsize[i][1], gaussian_0.hsize[i][2]);
 				int count = 0;
 				octree->addCubeOnLeafs(Cube({pos, hsize, i}), 0, count, 0);
 			}
 
 			std::cout << "Copying level 1 Gaussian: " << std::endl;
 			for (int i = 0; i < gaussian_1.count; ++i) {
-				auto cov3d = gaussian_1.ComputeCov3D(i);
 				glm::vec3 pos = glm::vec3(gaussian_1.pos[i][0], gaussian_1.pos[i][1], gaussian_1.pos[i][2]);
-				glm::vec3 hsize = calculateBoundingBoxSize(cov3d, pos) * 0.35f;
+				glm::vec3 hsize = glm::vec3(gaussian_1.hsize[i][0], gaussian_1.hsize[i][1], gaussian_1.hsize[i][2]);
 				int count = 0;
 				octree->addCubeOnLeafs(Cube({pos, hsize, i}), 0, count, 1);
 			}

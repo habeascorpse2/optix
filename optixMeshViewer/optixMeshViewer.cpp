@@ -307,10 +307,11 @@ void updateModel( ) {
     // params.g_position = make_float3(g_position.x, g_position.y, g_position.z);
 
     params.modelMatrix = glm::scale(m1, g_scale);
-    params.modelMatrix = glm::translate(params.modelMatrix, g_position);
     params.modelMatrix = glm::rotate(params.modelMatrix, glm::radians(g_rotation.x), {1.0f, 0.0f, 0.0f});
     params.modelMatrix = glm::rotate(params.modelMatrix, glm::radians(g_rotation.y), {0.0f, 1.0f, 0.0f});
     params.modelMatrix = glm::rotate(params.modelMatrix, glm::radians(g_rotation.z), {0.0f, 0.0f, 1.0f});
+    params.modelMatrix = glm::translate(params.modelMatrix, g_position);
+    
     
     
     
@@ -656,6 +657,7 @@ int main( int argc, char* argv[] )
         params.g_pos = gaussian.pos_cuda;
         params.g_shs = gaussian.shs_cuda;
         params.gcount = gaussian.count;
+        params.g_hsize = gaussian.hsize_cuda;
         // params.g_scale = gaussian.scale_cuda;
         // params.g_rotation = gaussian.rot_cuda;
         std::cout<<"Count Gaussians 1:" << gaussian.count << std::endl;
