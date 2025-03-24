@@ -474,6 +474,8 @@ void printGui(double frameTime) {
         camera_changed = true;
     if (ImGui::InputInt("gs", &params.gs))
         camera_changed = true;
+    if (ImGui::InputInt("K", &params.K))
+        camera_changed = true;   
 
     ImGui::InputText("file",&snapLabel);
     
@@ -655,7 +657,7 @@ int main( int argc, char* argv[] )
         params.g_opacity = gaussian.opacity_cuda;
         params.g_pos = gaussian.pos_cuda;
         params.g_shs = gaussian.shs_cuda;
-        params.gcount = gaussian.count;
+        params.gcount = gaussian.count;        
         // params.g_scale = gaussian.scale_cuda;
         // params.g_rotation = gaussian.rot_cuda;
         std::cout<<"Count Gaussians 1:" << gaussian.count << std::endl;
@@ -684,6 +686,7 @@ int main( int argc, char* argv[] )
         // g_scale =    make_float3(-0.8f, 0.8f, 0.8f);
         params.gn = 1;
         params.mode = 0;
+        params.K = 10;
         updateModel();
 
         octree = new oct::OctreeGaussian(gaussian, gaussianLow);

@@ -413,7 +413,7 @@ extern "C" __global__ void __closesthit__radiance()
             int size = 0;
             float T = 1.0f;
 
-            int k   = 10; //K First Gaussians
+            int k   = whitted::params.K; //K First Gaussians
             int k_i = 0;  // count K
 
             while (count > 0 && whitted::params.mode == 2) { 

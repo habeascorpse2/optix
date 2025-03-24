@@ -1,6 +1,6 @@
 #pragma once
 #include "whitted.h"
-#define OCTNODE_SIZE 100
+#define OCTNODE_SIZE 50
 
 namespace minstack {
 

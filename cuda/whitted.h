@@ -146,6 +146,7 @@ struct LaunchParams
     int gcount;
     int gn;
     int gs;
+    int K;
     float* g_pos;
     float* g_opacity;
     float* g_shs;
