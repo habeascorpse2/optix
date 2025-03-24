@@ -475,6 +475,8 @@ void printGui(double frameTime) {
         camera_changed = true;
     if (ImGui::InputInt("gs", &params.gs))
         camera_changed = true;
+    if (ImGui::InputInt("K", &params.K))
+        camera_changed = true;  
 
     ImGui::InputText("file",&snapLabel);
     
