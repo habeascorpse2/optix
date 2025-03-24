@@ -18,8 +18,8 @@ cudaDeviceSynchronize(); \
 if (cudaPeekAtLastError() != cudaSuccess) \
 	std::cerr << cudaGetErrorString(cudaGetLastError()) << std::endl;
 
-#define MAX_RESULTS 20
-#define MIN_SIZE .6f
+#define MAX_RESULTS 55
+#define MIN_SIZE .5f
 // Estrutura do cubo
 
 // Função para verificar erros CUDA
