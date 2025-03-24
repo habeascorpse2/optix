@@ -82,6 +82,7 @@ class Gaussian {
 		float* opacity_cuda;
 		float* shs_cuda;
 		float* cov3d_cuda;
+		float* hsize_cuda;
 		
 
 	Gaussian() {
@@ -161,6 +162,9 @@ class Gaussian {
 		// Allocate and fill the GPU data
 		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&pos_cuda, sizeof(Pos) * P));
 		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(pos_cuda, pos.data(), sizeof(Pos) * P, cudaMemcpyHostToDevice));
+		//Bounding Box
+		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&hsize_cuda, sizeof(Pos) * P));
+		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(hsize_cuda, hsize.data(), sizeof(Pos) * P, cudaMemcpyHostToDevice));
 		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&rot_cuda, sizeof(Rot) * P));
 		// CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(rot_cuda, rot.data(), sizeof(Rot) * P, cudaMemcpyHostToDevice));
 		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&shs_cuda, sizeof(SHs<3>) * P));
@@ -219,12 +223,12 @@ class Gaussian {
 	
 
 	std::vector<Pos> pos;
+	std::vector<Pos> hsize;
 	std::vector<Rot> rot;
 	std::vector<Scale> scale;
 	std::vector<float> opacity;
 	std::vector<SHs<3>> shs;
 	std::vector<std::array<float, 6>> cov3d;
-	// std::vector<std::array<float, 9>> cov3d;
 
 	
 	private:
@@ -369,9 +373,19 @@ class Gaussian {
 					shs[k].shs[j * 3 + 1] = points[i].shs.shs[(j - 1) + SH_N + 2];
 					shs[k].shs[j * 3 + 2] = points[i].shs.shs[(j - 1) + 2 * SH_N + 1];
 				}
+
 			}
 			cov3d = ComputeCov3D(scales, rot, 1);
 			// cov3d = ComputeCov3Ds(count);
+			this->hsize.resize(count);
+			for (int i=0; i < count; i++) {
+				auto cov3d_9 = ComputeCov3D(i);
+				glm::vec3 posi = glm::vec3(pos[i][0], pos[i][1], pos[i][2]);
+
+				auto hs = calculateBoundingBoxSize(cov3d_9, posi) * 0.35f;
+				this->hsize[i] = {hs.x, hs.y, hs.z};
+			}
+
 			return count;
 		}
 
@@ -464,6 +478,34 @@ class Gaussian {
 		// 	}
 		// 	return cov3ds;
 		// }
+
+		// Função para calcular o tamanho do cubo a partir da matriz de covariância
+		glm::vec3 calculateBoundingBoxSize(const Eigen::Matrix3f covariance, glm::vec3 P) {
+			
+			// Obter os eigenvalues da matriz de covariância 3D
+		   Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> solver(covariance);
+		   // Eigen::Vector3f eigenvalues = solver.eigenvalues().cwiseSqrt() * 2.0f;
+		   Eigen::Vector3f eigenvalues = solver.eigenvalues();
+		   Eigen::Matrix3f eigenvectors = solver.eigenvectors();
+
+		   // Defina o fator de dispersão (tipicamente 3 para 99.7% de cobertura)
+		   float factor = 3.0;
+		   Eigen::Vector3f pos(P.x, P.y, P.z);
+
+		   // Calcule a dispersão nas direções principais
+		   Eigen::Vector3f dispersion = factor * eigenvalues.cwiseSqrt();
+
+		   // Calcule as extremidades da bounding box
+		   Eigen::Vector3f bounding_box_min = pos - eigenvectors * dispersion;
+		   Eigen::Vector3f bounding_box_max = pos + eigenvectors * dispersion;
+
+		   // Calcule os tamanhos ao longo das direções X, Y e Z
+		   Eigen::Vector3f sizes = (bounding_box_max - bounding_box_min).cwiseAbs();
+
+		   // Criar o tamanho do cubo utilizando os eigenvalues da matriz 3D
+		   return glm::vec3(sizes(0), sizes(1), sizes(2));
+
+	   }
 
 
 };
