@@ -82,6 +82,7 @@ class Gaussian {
 		float* opacity_cuda;
 		float* shs_cuda;
 		float* cov3d_cuda;
+		float* cov3d9_cuda;
 		float* hsize_cuda;
 		
 
@@ -97,6 +98,8 @@ class Gaussian {
 		cudaFree(opacity_cuda);
 		cudaFree(shs_cuda);
 		cudaFree(cov3d_cuda);
+		cudaFree(hsize_cuda);
+		cudaFree(cov3d9_cuda);
 		cudaFree(depthIndexCuda);
 
 		cudaFree(view_cuda);
@@ -159,6 +162,11 @@ class Gaussian {
 		
 		int P = count;
 
+		for (int i=0; i< count; i++)
+		{
+			cov3d9.push_back(convertMatrix3fToArray(ComputeCov3D(i)));
+		}
+
 		// Allocate and fill the GPU data
 		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&pos_cuda, sizeof(Pos) * P));
 		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(pos_cuda, pos.data(), sizeof(Pos) * P, cudaMemcpyHostToDevice));
@@ -175,20 +183,12 @@ class Gaussian {
 		// CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(scale_cuda, scale.data(), sizeof(Scale) * P, cudaMemcpyHostToDevice));
 		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&cov3d_cuda, sizeof(float) * 6 * P));
 		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(cov3d_cuda, cov3d.data(), sizeof(float) * 6 * P, cudaMemcpyHostToDevice));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&cov3d_cuda, sizeof(float) * 9 * P));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(cov3d_cuda, cov3d.data(), sizeof(float) * 9 * P, cudaMemcpyHostToDevice));
+		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&cov3d9_cuda, sizeof(float) * 9 * P));
+		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(cov3d9_cuda, cov3d9.data(), sizeof(float) * 9 * P, cudaMemcpyHostToDevice));
 
 		
 
-		// Create space for view parameters
-		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&view_cuda, sizeof(Eigen::Matrix4f)));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&proj_cuda, sizeof(Eigen::Matrix4f)));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&cam_pos_cuda, 3 * sizeof(float)));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&background_cuda, 3 * sizeof(float)));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&rect_cuda, 2 * count * sizeof(int)));
-
 		float bg[3] = { white_bg ? 1.f : 0.f, white_bg ? 1.f : 0.f, white_bg ? 1.f : 0.f };
-		// CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(background_cuda, bg, 3 * sizeof(float), cudaMemcpyHostToDevice));
 
 		resolution_x = render_w;
 		resolution_y = render_h;
@@ -198,6 +198,12 @@ class Gaussian {
 		geomBufferFunc = resizeFunctional(&geomPtr, allocdGeom);
 		binningBufferFunc = resizeFunctional(&binningPtr, allocdBinning);
 		imgBufferFunc = resizeFunctional(&imgPtr, allocdImg);
+	}
+
+	std::array<float, 9> convertMatrix3fToArray(const Eigen::Matrix3f& matrix) {
+		std::array<float, 9> arr;
+		std::copy(matrix.data(), matrix.data() + 9, arr.begin());
+		return arr;
 	}
 
 	Eigen::Matrix3f ComputeCov3D(int index)
@@ -229,6 +235,7 @@ class Gaussian {
 	std::vector<float> opacity;
 	std::vector<SHs<3>> shs;
 	std::vector<std::array<float, 6>> cov3d;
+	std::vector<std::array<float, 9>> cov3d9;
 
 	
 	private:
@@ -376,6 +383,7 @@ class Gaussian {
 
 			}
 			cov3d = ComputeCov3D(scales, rot, 1);
+			// cov3d9 = ComputeCov3D9(scales, rot, 1);
 			// cov3d = ComputeCov3Ds(count);
 			this->hsize.resize(count);
 			for (int i=0; i < count; i++) {
@@ -427,57 +435,57 @@ class Gaussian {
 			return cov3ds;
 		}
 
-		// std::vector<std::array<float, 9>> ComputeCov3D(const std::vector<Scale>& scales, const std::vector<Rot>& rotations, float scale_modifier)
-		// {
-		// 	std::vector<std::array<float, 9>> cov3ds;
-		// 	cov3ds.reserve(scales.size());
+		std::vector<std::array<float, 9>> ComputeCov3D9(const std::vector<Scale>& scales, const std::vector<Rot>& rotations, float scale_modifier)
+		{
+			std::vector<std::array<float, 9>> cov3ds;
+			cov3ds.reserve(scales.size());
 
-		// 	for (size_t i = 0; i < scales.size(); i++) {
-		// 		std::array<float, 9> cov;
+			for (size_t i = 0; i < scales.size(); i++) {
+				std::array<float, 9> cov;
 				
-		// 		// Construir a matriz de escala S
-		// 		glm::mat3 S(1.0f);
-		// 		S[0][0] = scale_modifier * scales[i].scale[0];
-		// 		S[1][1] = scale_modifier * scales[i].scale[1];
-		// 		S[2][2] = scale_modifier * scales[i].scale[2];
+				// Construir a matriz de escala S
+				glm::mat3 S(1.0f);
+				S[0][0] = scale_modifier * scales[i].scale[0];
+				S[1][1] = scale_modifier * scales[i].scale[1];
+				S[2][2] = scale_modifier * scales[i].scale[2];
 
-		// 		// Obter os componentes do quaternion (r, x, y, z)
-		// 		float r = rotations[i].rot[0];
-		// 		float x = rotations[i].rot[1];
-		// 		float y = rotations[i].rot[2];
-		// 		float z = rotations[i].rot[3];
+				// Obter os componentes do quaternion (r, x, y, z)
+				float r = rotations[i].rot[0];
+				float x = rotations[i].rot[1];
+				float y = rotations[i].rot[2];
+				float z = rotations[i].rot[3];
 
-		// 		// Construir a matriz de rotação R a partir do quaternion
-		// 		glm::mat3 R = glm::mat3(
-		// 			1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z),       2.f * (x * z + r * y),
-		// 			2.f * (x * y + r * z),       1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
-		// 			2.f * (x * z - r * y),       2.f * (y * z + r * x),       1.f - 2.f * (x * x + y * y)
-		// 		);
+				// Construir a matriz de rotação R a partir do quaternion
+				glm::mat3 R = glm::mat3(
+					1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z),       2.f * (x * z + r * y),
+					2.f * (x * y + r * z),       1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
+					2.f * (x * z - r * y),       2.f * (y * z + r * x),       1.f - 2.f * (x * x + y * y)
+				);
 
-		// 		// Calcular M e a matriz de covariância sigma = transpose(M)*M
-		// 		glm::mat3 M = S * R;
-		// 		glm::mat3 sigma = glm::transpose(M) * M;
+				// Calcular M e a matriz de covariância sigma = transpose(M)*M
+				glm::mat3 M = S * R;
+				glm::mat3 sigma = glm::transpose(M) * M;
 
-		// 		// Inverter sigma para obter sigmaInv (já que a GPU espera a matriz invertida)
-		// 		glm::mat3 sigmaInv = glm::inverse(sigma);
+				// Inverter sigma para obter sigmaInv (já que a GPU espera a matriz invertida)
+				// glm::mat3 sigmaInv = glm::inverse(sigma);
 
-		// 		// Armazenar sigmaInv em ordem row-major (GPU espera float[9] em row-major)
-		// 		cov[0] = sigmaInv[0][0];
-		// 		cov[1] = sigmaInv[1][0];
-		// 		cov[2] = sigmaInv[2][0];
+				// Armazenar sigmaInv em ordem row-major (GPU espera float[9] em row-major)
+				cov[0] = sigma[0][0];
+				cov[1] = sigma[0][1];
+				cov[2] = sigma[0][2];
 
-		// 		cov[3] = sigmaInv[0][1];
-		// 		cov[4] = sigmaInv[1][1];
-		// 		cov[5] = sigmaInv[2][1];
+				cov[3] = sigma[1][0];
+				cov[4] = sigma[1][1];
+				cov[5] = sigma[1][2];
 
-		// 		cov[6] = sigmaInv[0][2];
-		// 		cov[7] = sigmaInv[1][2];
-		// 		cov[8] = sigmaInv[2][2];
+				cov[6] = sigma[2][0];
+				cov[7] = sigma[2][1];
+				cov[8] = sigma[2][2];
 
-		// 		cov3ds.push_back(cov);
-		// 	}
-		// 	return cov3ds;
-		// }
+				cov3ds.push_back(cov);
+			}
+			return cov3ds;
+		}
 
 		// Função para calcular o tamanho do cubo a partir da matriz de covariância
 		glm::vec3 calculateBoundingBoxSize(const Eigen::Matrix3f covariance, glm::vec3 P) {

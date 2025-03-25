@@ -655,6 +655,7 @@ int main( int argc, char* argv[] )
             3, false, 0);
 
         params.g_cov3d = gaussian.cov3d_cuda;
+        params.g_cov3d9 = gaussian.cov3d9_cuda;
         params.g_opacity = gaussian.opacity_cuda;
         params.g_pos = gaussian.pos_cuda;
         params.g_shs = gaussian.shs_cuda;

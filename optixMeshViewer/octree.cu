@@ -378,47 +378,9 @@ __host__ __device__ bool rayIntersectsCube1(const Cube& cube, const glm::vec3& o
     if ((tmin > tzmax) || (tzmin > tmax)) {
         return false;
     }
+
     return true;
 }
-
-// __host__ __device__ bool rayIntersectsCube1(const Cube& cube, const glm::vec3& origin, const glm::vec3& direction) {
-//     // Pré-calcular inverso da direção para evitar divisões repetidas
-//     glm::vec3 invDir = glm::vec3(1.0f/direction.x, 1.0f/direction.y, 1.0f/direction.z);
-    
-//     // Calcular pontos mínimos e máximos do cubo
-//     glm::vec3 boxMin = cube.center - cube.half_size;
-//     glm::vec3 boxMax = cube.center + cube.half_size;
-
-//     // Calcular t0 e t1 para cada componente
-//     float tx1 = (boxMin.x - origin.x) * invDir.x;
-//     float tx2 = (boxMax.x - origin.x) * invDir.x;
-
-//     float tmin = tx1 < tx2 ? tx1 : tx2;
-//     float tmax = tx1 > tx2 ? tx1 : tx2;
-
-//     float ty1 = (boxMin.y - origin.y) * invDir.y;
-//     float ty2 = (boxMax.y - origin.y) * invDir.y;
-
-//     float tymin = ty1 < ty2 ? ty1 : ty2;
-//     float tymax = ty1 > ty2 ? ty1 : ty2;
-
-//     if ((tmin > tymax) || (tymin > tmax))
-//         return false;
-
-//     tmin = tymin > tmin ? tymin : tmin;
-//     tmax = tymax < tmax ? tymax : tmax;
-
-//     float tz1 = (boxMin.z - origin.z) * invDir.z;
-//     float tz2 = (boxMax.z - origin.z) * invDir.z;
-
-//     float tzmin = tz1 < tz2 ? tz1 : tz2;
-//     float tzmax = tz1 > tz2 ? tz1 : tz2;
-
-//     if ((tmin > tzmax) || (tzmin > tmax))
-//         return false;
-
-//     return true;
-// }
 
 __device__
 bool isPointInsideCube(const glm::vec3& point, const Cube& cube) {
@@ -459,12 +421,14 @@ __device__ int searchIntersectingNodes(OctreeNodeD* nodes, const glm::vec3& orig
         if (level == 0 && node.numCubes_0 > 0) {
             octnode n;
             n.index = nodeIndex;
-            // Cube boundary = applyCenterTransformation(node.boundary, viewMatrix);
-            n.z = node.boundary.center.z;
-            if (direction.z > 0)
-                n.z *= -1;
+            Cube boundary = applyCenterTransformation(node.boundary, viewMatrix);
+            // glm::vec3 toNode = boundary.center - origin;
+            // n.z = glm::length(toNode);
+            n.z = boundary.center.z;
+
             // n.type = 0;
-            insert(n, octStack, count);
+            if (boundary.center.z > 0.2f)
+                insert(n, octStack, count);
         }
         else {
             if (level == 1 && node.numCubes_1 > 0) {
@@ -483,8 +447,9 @@ __device__ int searchIntersectingNodes(OctreeNodeD* nodes, const glm::vec3& orig
             int nchild = node.children[i];
             if ( nchild != -1) {
                 OctreeNodeD child = nodes[nchild];
+                // float tmin, tmax;
                 if ((child.branchCubes > 0) && rayIntersectsCube1(child.boundary, origin, direction)) {
-            
+                // if ((child.branchCubes > 0) && child.boundary.intersectRay(origin, direction, tmin, tmax)) {
                     stack[stackSize++] = nchild;
                 }
             }

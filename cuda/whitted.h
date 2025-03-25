@@ -63,6 +63,50 @@ struct Cube {
     Cube(glm::vec3 ccenter, glm::vec3 half_size, int index): center(ccenter), half_size(half_size), index(index) {
     }
 
+    __host__ __device__
+    // Calcula a interseção entre um raio e o AABB do nó.
+    // Retorna true se houver interseção, preenchendo tmin e tmax.
+    bool intersectRay(const glm::vec3& rayOrigin, const glm::vec3& rayDir, float &tmin, float &tmax) const {
+        glm::vec3 min = center - half_size;
+        glm::vec3 max = center + half_size;
+
+        // Interseção no eixo X
+        float tx1 = (min.x - rayOrigin.x) / rayDir.x;
+        float tx2 = (max.x - rayOrigin.x) / rayDir.x;
+        tmin = fmin(tx1, tx2);
+        tmax = fmax(tx1, tx2);
+
+        // Interseção no eixo Y
+        float ty1 = (min.y - rayOrigin.y) / rayDir.y;
+        float ty2 = (max.y - rayOrigin.y) / rayDir.y;
+        float tymin = fmin(ty1, ty2);
+        float tymax = fmax(ty1, ty2);
+
+        // Verifica se há separação entre os intervalos de X e Y
+        if ((tmin > tymax) || (tymin > tmax))
+            return false;
+        if (tymin > tmin)
+            tmin = tymin;
+        if (tymax < tmax)
+            tmax = tymax;
+
+        // Interseção no eixo Z
+        float tz1 = (min.z - rayOrigin.z) / rayDir.z;
+        float tz2 = (max.z - rayOrigin.z) / rayDir.z;
+        float tzmin = fmin(tz1, tz2);
+        float tzmax = fmax(tz1, tz2);
+
+        // Verifica se há separação entre os intervalos já atualizados e o eixo Z
+        if ((tmin > tzmax) || (tzmin > tmax))
+            return false;
+        if (tzmin > tmin)
+            tmin = tzmin;
+        if (tzmax < tmax)
+            tmax = tzmax;
+
+        return true;
+    }
+
 
 
 };
@@ -151,6 +195,7 @@ struct LaunchParams
     float* g_opacity;
     float* g_shs;
     float* g_cov3d;
+    float* g_cov3d9;
     float* g_hsize;
     // float* g_scale;
     // float* g_rotation;

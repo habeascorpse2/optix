@@ -276,7 +276,7 @@ extern "C" __global__ void __closesthit__radiance()
         glm::mat4 projMatrix = whitted::params.projMatrix;
 
         
-        glm::vec3 R = f2c(reflect(ray_dir,roughNormal));
+        glm::vec3 R = glm::normalize(f2c(reflect(ray_dir,roughNormal)));
         glm::vec3 Rn = glm::vec3(modelMatrix * glm::vec4(R, 0));
         glm::vec3 Pn = f2c(P);
         Pn = glm::vec3(modelMatrix * glm::vec4(Pn, 1));
@@ -307,6 +307,12 @@ extern "C" __global__ void __closesthit__radiance()
                     ponto = glm::vec3(whitted::params.g_pos[idx * 3], whitted::params.g_pos[(idx*3)+1], whitted::params.g_pos[(idx*3)+2]);
 
                 glm::vec3 p_view = transformPoint4x3(ponto, viewMat);
+
+                // glm::vec3 hsize = {whitted::params.g_hsize[idx * 3], whitted::params.g_hsize[idx * 3 + 1], whitted::params.g_hsize[idx * 3 + 2]};
+                // Cube cube = {ponto, hsize, 0};
+                // float tnear, tfar;
+                // if (rayIntersectsCube1(cube, Pn,  Rn) && (p_view.z > 0.2f)) {
+                // if (cube.intersectRay(Pn, Rn, tnear, tfar) && (p_view.z > 0.2f)) {
                 
                 if (p_view.z > 0.2f) {
 
@@ -400,7 +406,6 @@ extern "C" __global__ void __closesthit__radiance()
 
             highGaussian=1;
             level = 0;
-            
             count = searchIntersectingNodes(nodes, Pn, Rn, &octStack[0], viewMat, level);
             whitted::DepthGaussian dtree[whitted::GSM_MAX_SIZE];
 
@@ -411,9 +416,6 @@ extern "C" __global__ void __closesthit__radiance()
 
             int k   = whitted::params.K; //K First Gaussians
             int k_i = 0;  // count K
-            // if (count >= 15) {
-            //     count = 15;
-            // }
 
             while (count > 0 && whitted::params.mode == 2) { 
 
@@ -440,10 +442,63 @@ extern "C" __global__ void __closesthit__radiance()
                     }
                     glm::vec3 hsize = {whitted::params.g_hsize[idx * 3], whitted::params.g_hsize[idx * 3 + 1], whitted::params.g_hsize[idx * 3 + 2]};
                     Cube cube = {ponto, hsize, 0};
-                    if (rayIntersectsCube1(cube, Pn,  Rn)) {
+                    float tnear, tfar;
+                    if (cube.intersectRay( Pn,  Rn, tnear, tfar)) {
+
                         glm::vec3 p_view = transformPoint4x3(ponto, viewMat);
+
+                        // glm::mat3 covariance = glm::make_mat3( whitted::params.g_cov3d9[idx * 9] );
+                        glm::mat3 covariance(whitted::params.g_cov3d9[idx * 9+0], whitted::params.g_cov3d9[idx * 9+1], whitted::params.g_cov3d9[idx * 9+2],
+                                             whitted::params.g_cov3d9[idx * 9+3], whitted::params.g_cov3d9[idx * 9+4], whitted::params.g_cov3d9[idx * 9+5],
+                                             whitted::params.g_cov3d9[idx * 9+6], whitted::params.g_cov3d9[idx * 9+7], whitted::params.g_cov3d9[idx * 9+8]);
+
+                        // Determina o parâmetro t que minimiza a distância entre o ponto no raio e o centro da gaussiana.
+                        // Esse é o ponto da reta mais próximo do centro.
+                        float t = glm::dot(ponto - Pn, Rn);
+                        glm::vec3 closestPoint = Pn + t * Rn;
                         
-                        if (p_view.z > 0.2f) {
+                        // Calcula a diferença entre o ponto mais próximo e o centro da gaussiana
+                        glm::vec3 diff = closestPoint - ponto;
+                        
+                        // Calcula a inversa da matriz de covariância
+                        glm::mat3 invCov = glm::inverse(covariance);
+                        
+                        // Computa a distância de Mahalanobis ao quadrado: diff^T * invCov * diff
+                        float mahalanobis = glm::dot(diff, invCov * diff);
+                        float opacity = whitted::params.g_opacity[idx];
+                        
+                        // Avalia a função gaussiana (sem constante de normalização) no ponto
+                        opacity = opacity * std::exp(-0.5f * mahalanobis);
+
+                        if (opacity > 1/255 ) {   
+                            float3 dir = c2f(glm::normalize(ponto - Pn));
+                                    
+                            if (k_i >= k) {
+                                int lvl = highGaussian -1;
+                                float test_T = T * (1 - opacity);
+                                if (test_T < 0.0001f) {
+                                    end = true;
+                                    break;
+                                }
+                                
+                                float3 color = get_GaussianRGB(dir, idx, lvl);
+                                result += color  * opacity * T;
+
+                                T = test_T;
+                            }
+                            else {
+                                whitted::DepthGaussian d;
+                                int lvl = highGaussian -1;
+                                d.c = make_float4(get_GaussianRGB(dir, idx, lvl), opacity);
+                                d.z = p_view.z;
+                                GSM_insert(d, &dtree[0], size);
+                            }
+                        }
+                    
+
+                        /*glm::vec3 p_view = transformPoint4x3(ponto, viewMat);
+                        
+                         if (p_view.z > 0.2f) {
 
                             glm::vec4 p_hom = transformPoint4x4(p_view, projMatrix);
                             float p_w = 1.0f / (p_hom.w + 0.0000001f);
@@ -476,11 +531,11 @@ extern "C" __global__ void __closesthit__radiance()
                             float3 cov =  computeCov2D(p_view, whitted::params.focal.x, whitted::params.focal.y, whitted::params.tan_fovx, whitted::params.tan_fovy, &cov3D[0], viewMat);
                             float det = (cov.x * cov.z - cov.y * cov.y);
 
-                            // constexpr float h_var = 0.3f;
-                            // cov.x += h_var;
-                            // cov.z += h_var;
-                            // const float det_cov_plus_h_cov = cov.x * cov.z - cov.y * cov.y;
-                            // float h_convolution_scaling = sqrt(max(0.000025f, det / det_cov_plus_h_cov)); // max for numerical stability
+                            constexpr float h_var = 0.3f;
+                            cov.x += h_var;
+                            cov.z += h_var;
+                            const float det_cov_plus_h_cov = cov.x * cov.z - cov.y * cov.y;
+                            float h_convolution_scaling = sqrt(max(0.000025f, det / det_cov_plus_h_cov)); // max for numerical stability
 
                             if (det != 0.0f) {
 
@@ -493,11 +548,9 @@ extern "C" __global__ void __closesthit__radiance()
                                 dir = dir / length(dir);
                                 float opacity;
                                 if (level == 0)
-                                    // opacity = getOpacity( whitted::params.g_opacity[idx] * h_convolution_scaling, conic, point_image);
-                                    opacity = getOpacity( whitted::params.g_opacity[idx] , conic, point_image);
+                                    opacity = getOpacity( whitted::params.g_opacity[idx] * h_convolution_scaling, conic, point_image);
                                 else
-                                    // opacity = getOpacity( whitted::params.g_opacity_low[idx] * h_convolution_scaling, conic, point_image);
-                                    opacity = getOpacity( whitted::params.g_opacity_low[idx], conic, point_image);
+                                    opacity = getOpacity( whitted::params.g_opacity_low[idx] * h_convolution_scaling, conic, point_image);
                                 // float opacity = whitted::params.g_opacity[idx] * 0.1;
                                 if (opacity > 0 ) {   
                                     
@@ -524,7 +577,7 @@ extern "C" __global__ void __closesthit__radiance()
                                 }
                                 
                             }
-                        }
+                        // }*/
                     }
 
                 }
