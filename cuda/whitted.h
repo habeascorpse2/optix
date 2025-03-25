@@ -195,7 +195,7 @@ struct LaunchParams
     float* g_opacity;
     float* g_shs;
     float* g_cov3d;
-    float* g_cov3d9;
+    // float* g_cov3d9;
     float* g_hsize;
     // float* g_scale;
     // float* g_rotation;
