@@ -215,6 +215,7 @@ struct LaunchParams
     // int     numNodes;
     int mode;
     // bool highGaussian;
+    float roughness;
 
     glm::mat4 projMatrix;
     glm::mat4 modelMatrix;

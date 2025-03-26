@@ -266,8 +266,10 @@ extern "C" __global__ void __closesthit__radiance()
 
     // Implementação do 3D Gaussian
     unsigned int seed = whitted::getPayloadSeed();
-    if ((rnd(seed) > roughness) && (rnd(seed) < hit_group_data->material_data.pbr.metallic)  ) {
-    // if (metallic > 0.99f) {
+
+    roughness = whitted::params.roughness;
+    // if ((rnd(seed) > roughness) && (rnd(seed) < hit_group_data->material_data.pbr.metallic)  ) {
+    if (metallic > 0.99f) {
         float3 roughNormal = N;
         roughNormal.x -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
         roughNormal.y -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
