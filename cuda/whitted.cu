@@ -284,17 +284,18 @@ extern "C" __global__ void __closesthit__radiance()
         Pn = glm::vec3(modelMatrix * glm::vec4(Pn, 1));
 
         //Colmap to CUDA positions
-        Pn.x *= -1;
         Rn.x *= -1;
+        Pn.y *= -1;
+        Pn.z *= -1;
 
         // //Projection fix
-        projMatrix[0] *= -1;
-        projMatrix[1] *= -1;
-
+        // projMatrix[0] *= -1;
+        // projMatrix[1] *= -1;
         
         glm::vec3 up = {0, 1, 0};
         glm::mat4 viewMat = lookAtGLM(Pn, Pn + Rn, up);
         unsigned int highGaussian = whitted::getPayloadHighGaussian();
+        // viewMat[1] *= -1;
 
         int x = 0;
         int y = 0;
@@ -657,7 +658,7 @@ extern "C" __global__ void __closesthit__radiance()
         }
     }
 
-    // if (indirect) {
+    if (indirect) {
         if (whitted::params.mode == 2) {
 
             float3 result2 = make_float3(0.0f);
@@ -668,13 +669,9 @@ extern "C" __global__ void __closesthit__radiance()
             glm::mat4 projMatrix = whitted::params.projMatrix;
             
             //Colmap to CUDA positions
+            Rn.x *= -1;
             Pn.y *= -1;
-            Pn.x *= -1;
             Pn.z *= -1;
-
-            //Projection fix
-            projMatrix[0] *= -1;
-            projMatrix[1] *= -1;
 
             glm::vec3 up = {0, 1, 0};
             glm::mat4 viewMat = lookAtGLM(Pn, Pn + Rn, up);
@@ -720,7 +717,6 @@ extern "C" __global__ void __closesthit__radiance()
                         ponto = glm::vec3(whitted::params.g_pos_low[idx * 3], whitted::params.g_pos_low[(idx*3)+1], whitted::params.g_pos_low[(idx*3)+2]);
                     }
 
-                    ponto.x *= -1;
                     
                     glm::vec3 p_view = transformPoint4x3(ponto, viewMat);
                     
@@ -809,13 +805,13 @@ extern "C" __global__ void __closesthit__radiance()
             }
             result2 = convertSRGBToRGB(result2);
             if (!indirect)
-                result = result2 * 0.5f + (0.5 * result);
+                result = result2 * 0.9f + (0.1 * result);
             else
                 result = result2 * 1.3 * (make_float3(base_color));
             whitted::setPayloadResult( result );
             return;
         }
-    // }
+    }
 
     whitted::setPayloadResult( result );
 }
