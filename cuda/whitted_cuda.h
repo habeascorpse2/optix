@@ -447,7 +447,7 @@ __forceinline__ __device__ float3 get_GaussianRGB(float3 d, int i, int& level) {
         s = whitted::params.g_shs_low;
     float3 rgb = SH_C0 * make_float3(s[idx], s[idx + 1], s[idx + 2]);
 
-        rgb +=
+        /*rgb +=
             - SH_C1 * d.y * make_float3(s[idx + 3 * 1 + 0], s[ idx + 3 * 1 +  1], s[idx + 3 * 1 + 2])
             + SH_C1 * d.z * make_float3(s[idx + 3 * 2 + 0], s[ idx + 3 * 2 +  1], s[idx + 3 * 2 + 2])
             - SH_C1 * d.x * make_float3(s[idx + 3 * 3 + 0], s[ idx + 3 * 3 +  1], s[idx + 3 * 3 + 2]);
@@ -473,7 +473,7 @@ __forceinline__ __device__ float3 get_GaussianRGB(float3 d, int i, int& level) {
             SH_C3[3] * d.z * (2.0 * zz - 3.0 * xx - 3.0 * yy) * make_float3(s[idx + 3 * 12 + 0], s[ idx + 3 * 12 +  1], s[idx + 3 * 12 + 2]) +
             SH_C3[4] * d.x * (4.0 * zz - xx - yy) * make_float3(s[idx + 3 * 13 + 0], s[ idx + 3 * 13 +  1], s[idx + 3 * 13 + 2]) +
             SH_C3[5] * d.z * (xx - yy) * make_float3(s[idx + 3 * 14 + 0], s[ idx + 3 * 14 +  1], s[idx + 3 * 14 + 2]) +
-            SH_C3[6] * d.x * (xx - 3.0 * yy) * make_float3(s[idx + 3 * 15 + 0], s[ idx + 3 * 15 +  1], s[idx + 3 * 15 + 2]);
+            SH_C3[6] * d.x * (xx - 3.0 * yy) * make_float3(s[idx + 3 * 15 + 0], s[ idx + 3 * 15 +  1], s[idx + 3 * 15 + 2]);*/
     
     rgb.x += 0.5f;
     rgb.y += 0.5f;
