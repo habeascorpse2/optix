@@ -476,7 +476,11 @@ void printGui(double frameTime) {
     if (ImGui::InputInt("gs", &params.gs))
         camera_changed = true;
     if (ImGui::InputInt("K", &params.K))
-        camera_changed = true;  
+        camera_changed = true;
+
+    if (ImGui::SliderFloat("roughness", &params.roughness , 0.0f, 0.35f)) {
+        camera_changed = true;
+    }
 
     ImGui::InputText("file",&snapLabel);
     
@@ -655,7 +659,7 @@ int main( int argc, char* argv[] )
             3, false, 0);
 
         params.g_cov3d = gaussian.cov3d_cuda;
-        params.g_cov3d9 = gaussian.cov3d9_cuda;
+        // params.g_cov3d9 = gaussian.cov3d9_cuda;
         params.g_opacity = gaussian.opacity_cuda;
         params.g_pos = gaussian.pos_cuda;
         params.g_shs = gaussian.shs_cuda;
