@@ -390,7 +390,7 @@ class Gaussian {
 				auto cov3d_9 = ComputeCov3D(i);
 				glm::vec3 posi = glm::vec3(pos[i][0], pos[i][1], pos[i][2]);
 
-				auto hs = calculateBoundingBoxSize(cov3d_9, posi) * 0.35f;
+				auto hs = calculateBoundingBoxSize(cov3d_9, posi) * 0.45f;
 				this->hsize[i] = {hs.x, hs.y, hs.z};
 			}
 

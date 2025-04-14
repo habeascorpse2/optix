@@ -19,6 +19,8 @@ class OctreeGaussian {
 			// Definir o limite da Octree
 			Cube rootCube{{0, -2.f, 0.f}, {18, 12, 18}, -1}; // Quarto
 			// Cube rootCube{{0, 4.f, 3.f}, {80, 30, 80}, -1}; //Sponza
+
+			// Cube rootCube{{0, -2.f, 0.f}, {30, 12, 30}, -1}; // Outros
 			octree = new Octree(rootCube.center, rootCube.half_size);
 
 			octree->buildOctree();

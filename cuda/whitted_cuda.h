@@ -289,6 +289,46 @@ __device__ const float SH_C3[7] = {
 };
 
 
+struct UniqueStack {
+    int data[40];  // Tamanho máximo fixo
+    int size;
+
+    __device__
+    UniqueStack() : size(0) {}
+
+    __device__
+    bool contains(int value) {
+        for (int i = 0; i < size; i++) {
+            if (data[i] == value)
+                return true;
+        }
+        return false;
+    }
+
+    __device__
+    bool push(int value) {
+        if (size >= 40)
+            return false;
+            
+        data[size++] = value;
+        return true;
+    }
+
+    __device__
+    bool pop(int& value) {
+        if (size <= 0)
+            return false;
+            
+        value = data[--size];
+        return true;
+    }
+
+    __device__
+    void clear() {
+        size = 0;
+    }
+};
+
 
 
 // Forward method for converting scale and rotation properties of each

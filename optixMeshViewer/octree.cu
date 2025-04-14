@@ -503,7 +503,7 @@ __device__ int searchInsideNode(OctreeNodeD* nodes, const glm::vec3& origin, int
     stack[stackSize++] = 0; // Começa pelo nó root
     int count = 0;
 
-    auto size = glm::vec3(0.2f, 0.2f, 0.2f);
+    auto size = glm::vec3(0.4f, 0.4f, 0.4f);
     Cube cube(origin, size, -1);
 
     while (stackSize > 0 && count < MAX_RESULTS) {

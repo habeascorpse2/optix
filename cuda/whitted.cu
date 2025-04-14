@@ -419,6 +419,7 @@ extern "C" __global__ void __closesthit__radiance()
 
             int k   = whitted::params.K; //K First Gaussians
             int k_i = 0;  // count K
+            UniqueStack stack;
 
             while (count > 0 && whitted::params.mode == 2) { 
 
@@ -507,7 +508,7 @@ extern "C" __global__ void __closesthit__radiance()
                                     if (k_i >= k) {
                                         int lvl = highGaussian -1;
                                         float test_T = T * (1 - opacity);
-                                        if (test_T < 0.0001f) {
+                                        if (test_T < 0.0003f) {
                                             end = true;
                                             break;
                                         }
@@ -522,7 +523,8 @@ extern "C" __global__ void __closesthit__radiance()
                                         int lvl = highGaussian -1;
                                         d.c = make_float4(get_GaussianRGB(dir, idx, lvl), opacity);
                                         d.z = p_view.z;
-                                        GSM_insert(d, &dtree[0], size);
+                                        if (!stack.contains(idx) && stack.push(idx))
+                                            GSM_insert(d, &dtree[0], size);
                                     }
                                 }
                                 
@@ -536,7 +538,7 @@ extern "C" __global__ void __closesthit__radiance()
                 while (size > 0) {
                     k_i++;
                     float test_T = T * (1 - dtree[0].c.w);
-                    if (test_T < 0.0001f)
+                    if (test_T < 0.0003f)
                     {
                         end = true;
                         break;
@@ -805,9 +807,9 @@ extern "C" __global__ void __closesthit__radiance()
             }
             result2 = convertSRGBToRGB(result2);
             if (!indirect)
-                result = result2 * 0.9f + (0.1 * result);
+                result = result2;// * 0.5f + (0.5 * result);
             else
-                result = result2 * 1.3 * (make_float3(base_color));
+                result = result2;// * 1.3 * (make_float3(base_color));
             whitted::setPayloadResult( result );
             return;
         }

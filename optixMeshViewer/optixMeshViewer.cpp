@@ -503,6 +503,10 @@ void printGui(double frameTime) {
     }
     std::string eye = "Eye X:" + std::to_string(camera.eye().x) + " Y:"+ std::to_string(camera.eye().y) + " Z:" + std::to_string(camera.eye().z);
     ImGui::Text(eye.c_str());
+
+    std::string center = "Center X:" + std::to_string(camera.direction().x) + " Y:"+ std::to_string(camera.direction().y) + " Z:" + std::to_string(camera.direction().z);
+    ImGui::Text(center.c_str());
+
     if (ImGui::Checkbox("Keep Y", &keepY)) {
         yAxis = camera.eye().y;
     }
@@ -698,7 +702,6 @@ int main( int argc, char* argv[] )
 
         octree = new oct::OctreeGaussian(gaussian, gaussianLow);
         params.octree = octree->deviceOctree;
-        camera.setFovY(60.f);
 
         sutil::Scene scene;
         sutil::loadScene( sutil::sampleDataFilePath(infile.c_str()), scene );
@@ -706,6 +709,17 @@ int main( int argc, char* argv[] )
 
         OPTIX_CHECK( optixInit() ); // Need to initialize function table
         initCameraState( scene );
+        camera.setFovY(45.f);
+        //Sponza Teapot
+        // camera.setEye({5.53784f, 2.0f, -0.61609f});
+        // camera.setDirection({-0.983589f, 0.f, -0.029241});
+
+        //Quarto Teapot
+        // camera.setEye({4.247258f, 2.169628f, -0.33747f});
+        // camera.setDirection({0.097194f, -0.207912f, -0.973307});
+
+        trackball.setCamera( &camera );
+        
         initLaunchParams( scene );
 
 
