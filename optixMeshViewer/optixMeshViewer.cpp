@@ -194,8 +194,7 @@ static void keyCallback( GLFWwindow* window, int32_t key, int32_t /*scancode*/, 
 {
     if( action == GLFW_PRESS )
     {
-        if( key == GLFW_KEY_Q ||
-            key == GLFW_KEY_ESCAPE )
+        if( key == GLFW_KEY_ESCAPE )
         {
             glfwSetWindowShouldClose( window, true );
         }
@@ -292,29 +291,14 @@ void initLaunchParams( const sutil::Scene& scene ) {
 }
 
 void updateModel( ) {
-    
-    // params.modelMatrix = sutil::Matrix4x4({1.0f});
-    // params.g_position = make_float3(g_position.x, g_position.y, g_position.z);
-    // sutil::Matrix4x4 m1 = sutil::Matrix4x4({1.0f});
-
-    // params.modelMatrix = m1.scale(g_scale);
-    // params.modelMatrix *= m1.translate(params.g_position);
-    // params.modelMatrix *= m1.rotate(glm::radians(g_rotation.x),{1.0f, 0.0f, 0.0f});
-    // params.modelMatrix *= m1.rotate(glm::radians(g_rotation.y),{0.0f, 1.0f, 0.0f});
-    // params.modelMatrix *= m1.rotate(glm::radians(g_rotation.z),{0.0f, 0.0f, 1.0f});
 
     glm::mat4 m1 = glm::mat4(1.0f);
-    // params.g_position = make_float3(g_position.x, g_position.y, g_position.z);
 
     params.modelMatrix = glm::scale(m1, g_scale);
     params.modelMatrix = glm::rotate(params.modelMatrix, glm::radians(g_rotation.x), {1.0f, 0.0f, 0.0f});
     params.modelMatrix = glm::rotate(params.modelMatrix, glm::radians(g_rotation.y), {0.0f, 1.0f, 0.0f});
     params.modelMatrix = glm::rotate(params.modelMatrix, glm::radians(g_rotation.z), {0.0f, 0.0f, 1.0f});
-    params.modelMatrix = glm::translate(params.modelMatrix, g_position);
-    
-    
-    
-    
+    params.modelMatrix = glm::translate(params.modelMatrix, g_position);    
 }
 
 
@@ -718,7 +702,7 @@ int main( int argc, char* argv[] )
         // camera.setEye({4.247258f, 2.169628f, -0.33747f});
         // camera.setDirection({0.097194f, -0.207912f, -0.973307});
 
-        trackball.setCamera( &camera );
+        // trackball.setCamera( &camera );
         
         initLaunchParams( scene );
 

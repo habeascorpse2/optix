@@ -183,8 +183,8 @@ class Gaussian {
 		// CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(scale_cuda, scale.data(), sizeof(Scale) * P, cudaMemcpyHostToDevice));
 		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&cov3d_cuda, sizeof(float) * 6 * P));
 		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(cov3d_cuda, cov3d.data(), sizeof(float) * 6 * P, cudaMemcpyHostToDevice));
-		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&cov3d9_cuda, sizeof(float) * 9 * P));
-		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(cov3d9_cuda, cov3d9.data(), sizeof(float) * 9 * P, cudaMemcpyHostToDevice));
+		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&cov3d9_cuda, sizeof(float) * 9 * P));
+		// CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(cov3d9_cuda, cov3d9.data(), sizeof(float) * 9 * P, cudaMemcpyHostToDevice));
 
 		
 
@@ -390,7 +390,7 @@ class Gaussian {
 				auto cov3d_9 = ComputeCov3D(i);
 				glm::vec3 posi = glm::vec3(pos[i][0], pos[i][1], pos[i][2]);
 
-				auto hs = calculateBoundingBoxSize(cov3d_9, posi) * 0.45f;
+				auto hs = calculateBoundingBoxSize(cov3d_9, posi) * 0.35f;
 				this->hsize[i] = {hs.x, hs.y, hs.z};
 			}
 
