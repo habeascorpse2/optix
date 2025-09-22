@@ -82,9 +82,9 @@ set(CUDA_REMOVE_GLOBAL_MEMORY_SPACE_WARNING ON)
 set(CUDA_NVCC_EXECUTABLE "/usr/local/cuda-11.8/bin/nvcc") # path
 set(CUDA_NVCC_FLAGS -arch;sm_50;--use_fast_math;-lineinfo;-Wno-deprecated-gpu-targets ;; ) # list
 # Build specific configuration flags
+set(CUDA_NVCC_FLAGS_RELEASE  ; )
 set(CUDA_NVCC_FLAGS_DEBUG  ; )
 set(CUDA_NVCC_FLAGS_MINSIZEREL  ; )
-set(CUDA_NVCC_FLAGS_RELEASE  ; )
 set(CUDA_NVCC_FLAGS_RELWITHDEBINFO  ; )
 set(nvcc_flags -m64;--std;c++11) # list
 set(CUDA_NVCC_INCLUDE_ARGS "-I/usr/local/cuda-11.8/include;-I/home/alan/dev/optix/include;-I/home/alan/dev/optix/SDK/cuda;-I/home/alan/dev/optix/SDK;-I/home/alan/dev/optix/SDK/include;-I/home/alan/dev/optix/SDK;-I/usr/local/cuda-11.8/include;-I/home/alan/dev/optix/SDK/sutil") # list (needs to be in quotes to handle spaces properly).

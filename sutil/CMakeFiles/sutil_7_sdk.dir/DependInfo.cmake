@@ -10,6 +10,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/alan/dev/optix/SDK/sutil/Camera.cpp" "sutil/CMakeFiles/sutil_7_sdk.dir/Camera.cpp.o" "gcc" "sutil/CMakeFiles/sutil_7_sdk.dir/Camera.cpp.o.d"
   "/home/alan/dev/optix/SDK/sutil/GLDisplay.cpp" "sutil/CMakeFiles/sutil_7_sdk.dir/GLDisplay.cpp.o" "gcc" "sutil/CMakeFiles/sutil_7_sdk.dir/GLDisplay.cpp.o.d"
+  "/home/alan/dev/optix/SDK/sutil/GaussianScene.cpp" "sutil/CMakeFiles/sutil_7_sdk.dir/GaussianScene.cpp.o" "gcc" "sutil/CMakeFiles/sutil_7_sdk.dir/GaussianScene.cpp.o.d"
   "/home/alan/dev/optix/SDK/sutil/PPMLoader.cpp" "sutil/CMakeFiles/sutil_7_sdk.dir/PPMLoader.cpp.o" "gcc" "sutil/CMakeFiles/sutil_7_sdk.dir/PPMLoader.cpp.o.d"
   "/home/alan/dev/optix/SDK/sutil/Scene.cpp" "sutil/CMakeFiles/sutil_7_sdk.dir/Scene.cpp.o" "gcc" "sutil/CMakeFiles/sutil_7_sdk.dir/Scene.cpp.o.d"
   "/home/alan/dev/optix/SDK/sutil/Trackball.cpp" "sutil/CMakeFiles/sutil_7_sdk.dir/Trackball.cpp.o" "gcc" "sutil/CMakeFiles/sutil_7_sdk.dir/Trackball.cpp.o.d"

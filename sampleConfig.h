@@ -61,7 +61,6 @@
   "-std=c++11", \
   "-arch", \
   "compute_50", \
-  "-lineinfo", \
   "-G", \
   "-use_fast_math", \
   "-default-device", \

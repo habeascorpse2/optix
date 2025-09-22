@@ -1277,7 +1277,7 @@ void Scene::createProgramGroups()
         OptixProgramGroupDesc miss_prog_group_desc = {};
         miss_prog_group_desc.kind                   = OPTIX_PROGRAM_GROUP_KIND_MISS;
         miss_prog_group_desc.miss.module            = m_ptx_module;
-        miss_prog_group_desc.miss.entryFunctionName = "__miss__constant_radiance";
+        miss_prog_group_desc.miss.entryFunctionName = "__miss__radiance";
         OPTIX_CHECK_LOG( optixProgramGroupCreate(
                     m_context,
                     &miss_prog_group_desc,
@@ -1313,6 +1313,8 @@ void Scene::createProgramGroups()
         hit_prog_group_desc.hitgroup.entryFunctionNameCH = "__closesthit__radiance";
         hit_prog_group_desc.hitgroup.moduleAH            = m_ptx_module;
         hit_prog_group_desc.hitgroup.entryFunctionNameAH = "__anyhit__radiance";
+        hit_prog_group_desc.hitgroup.moduleIS            = m_ptx_module;
+        hit_prog_group_desc.hitgroup.entryFunctionNameIS = "__intersection__";
         OPTIX_CHECK_LOG( optixProgramGroupCreate(
                          m_context,
                          &hit_prog_group_desc,

@@ -211,4 +211,39 @@ bool Trackball::wheelEvent(int dir)
     return true;
 }
 
+bool Trackball::handleKeyEvent(unsigned char key)
+{
+    float currentSpeed = m_moveSpeed;
+    
+    switch(key)
+    {
+        // Arrow keys
+        case 37: // Left arrow
+        case 'A':
+        case 'a':
+            moveLeft(currentSpeed);
+            return true;
+            
+        case 38: // Up arrow
+        case 'W':
+        case 'w':
+            moveForward(currentSpeed);
+            return true;
+            
+        case 39: // Right arrow
+        case 'D':
+        case 'd':
+            moveRight(currentSpeed);
+            return true;
+            
+        case 40: // Down arrow
+        case 'S':
+        case 's':
+            moveBackward(currentSpeed);
+            return true;
+    }
+    
+    return false;
+}
+
 } // namespace sutil

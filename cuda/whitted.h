@@ -39,13 +39,18 @@
 
 
 // Funções auxiliares para calcular o mínimo e o máximo entre dois float3
-__host__ __device__ glm::vec3 min(const float3& a, const float3& b) {
+inline __host__ __device__ glm::vec3 min(const float3& a, const float3& b) {
     return glm::vec3(fminf(a.x, b.x), fminf(a.y, b.y), fminf(a.z, b.z));
 }
 
-__host__ __device__ glm::vec3 max(const float3& a, const float3& b) {
+inline __host__ __device__ glm::vec3 max(const float3& a, const float3& b) {
     return glm::vec3(fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z));
 }
+
+struct octnode{
+    float z;
+    int index;
+};
 
 struct Cube {
     glm::vec3 center;
@@ -111,7 +116,7 @@ struct Cube {
 
 };
 
-    __host__ __device__
+inline    __host__ __device__
     Cube applyCenterTransformation(const Cube& scube, const glm::mat4& matrix) {
         Cube cube;
         cube.center = glm::vec3(matrix * glm::vec4(scube.center, 1.0f));
@@ -121,16 +126,16 @@ struct Cube {
 
 struct OctreeNodeD {
     int *cubes_0;
-    int *cubes_1;
+    // int *cubes_1;
     int children[8]; // Índices dos filhos
     Cube boundary;
     // bool is_leaf;
     int numCubes_0;
-    int numCubes_1;
+    // int numCubes_1;
     int branchCubes;
 
     __host__ __device__
-    OctreeNodeD() : numCubes_0(0),numCubes_1(0), branchCubes(0) {
+    OctreeNodeD() : numCubes_0(0), branchCubes(0) {
         // is_leaf = false;
         for (int i = 0; i < 8; ++i) {
             children[i] = -1;
@@ -143,10 +148,10 @@ namespace whitted
 {
 
 const unsigned int NUM_ATTRIBUTE_VALUES = 4u;
-const unsigned int NUM_PAYLOAD_VALUES   = 6u;
+const unsigned int NUM_PAYLOAD_VALUES   = 10u;
 const unsigned int MAX_TRACE_DEPTH      = 2u;
 
-const unsigned int GSM_MAX_SIZE = 120;
+const unsigned int GSM_MAX_SIZE = 60;
 // const unsigned int gaussian_block = 200;
 const unsigned int WIDTH = 800;
 const unsigned int HEIGHT = 600;
@@ -157,6 +162,14 @@ struct HitGroupData
 {
     GeometryData geometry_data;
     MaterialData material_data;
+};
+
+struct HitRecord 
+{
+    alignas(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
+    uint32_t gaussian_id;  // Membro direto sem struct aninhado
+
+    __host__ __device__ HitRecord() : gaussian_id(0) {}
 };
 
 
@@ -185,7 +198,9 @@ struct LaunchParams
 
     BufferView<Light>        lights;
     float3                   miss_color;
+    CUdeviceptr aabb_buffer;
     OptixTraversableHandle   handle;
+    OptixTraversableHandle   ghandle;
 
     int gcount;
     int gn;
@@ -201,18 +216,8 @@ struct LaunchParams
     float* g_rotation;
 
     OctreeNodeD*  octree;
-    OctreeNodeD* octreeLow;
-
-    float* g_pos_low;
-    float* g_opacity_low;
-    float* g_shs_low;
-    float* g_cov3d_low;
-    // float* g_scale_low;
-    // float* g_rotation_low;
 
     
-    // int* cubes;
-    // int     numNodes;
     int mode;
     // bool highGaussian;
     float roughness;
@@ -241,8 +246,12 @@ struct PayloadRadiance
 
     float3       emitted;
     float3       radiance;
+    float3       ray_dir;
+    float3       ray_origin;
+    int         htype; // 0 = RADIANCE, 1 = gaussians
 
-    unsigned int highGaussian;
+    octnode gstack[GSM_MAX_SIZE];
+    int stackSize = 0;
 };
 
 
@@ -257,11 +266,8 @@ struct PayloadOcclusion
 //     float4 c;
 // };
 struct DepthGaussian {
-    //   unsigned char r, g,b,a, z;
     float z;
-    // int index;
     float4 c;
-    // float3 ponto;
 };
 
 // struct GSM_tree {

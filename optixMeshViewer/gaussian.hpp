@@ -173,18 +173,18 @@ class Gaussian {
 		//Bounding Box
 		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&hsize_cuda, sizeof(Pos) * P));
 		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(hsize_cuda, hsize.data(), sizeof(Pos) * P, cudaMemcpyHostToDevice));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&rot_cuda, sizeof(Rot) * P));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(rot_cuda, rot.data(), sizeof(Rot) * P, cudaMemcpyHostToDevice));
+		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&rot_cuda, sizeof(Rot) * P));
+		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(rot_cuda, rot.data(), sizeof(Rot) * P, cudaMemcpyHostToDevice));
 		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&shs_cuda, sizeof(SHs<3>) * P));
 		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(shs_cuda, shs.data(), sizeof(SHs<3>) * P, cudaMemcpyHostToDevice));
 		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&opacity_cuda, sizeof(float) * P));
 		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(opacity_cuda, opacity.data(), sizeof(float) * P, cudaMemcpyHostToDevice));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&scale_cuda, sizeof(Scale) * P));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(scale_cuda, scale.data(), sizeof(Scale) * P, cudaMemcpyHostToDevice));
+		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&scale_cuda, sizeof(Scale) * P));
+		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(scale_cuda, scale.data(), sizeof(Scale) * P, cudaMemcpyHostToDevice));
 		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&cov3d_cuda, sizeof(float) * 6 * P));
 		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(cov3d_cuda, cov3d.data(), sizeof(float) * 6 * P, cudaMemcpyHostToDevice));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&cov3d9_cuda, sizeof(float) * 9 * P));
-		// CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(cov3d9_cuda, cov3d9.data(), sizeof(float) * 9 * P, cudaMemcpyHostToDevice));
+		CUDA_SAFE_CALL_ALWAYS(cudaMalloc((void**)&cov3d9_cuda, sizeof(float) * 9 * P));
+		CUDA_SAFE_CALL_ALWAYS(cudaMemcpy(cov3d9_cuda, cov3d9.data(), sizeof(float) * 9 * P, cudaMemcpyHostToDevice));
 
 		
 
@@ -383,16 +383,17 @@ class Gaussian {
 
 			}
 			cov3d = ComputeCov3D(scales, rot, 1);
-			// cov3d9 = ComputeCov3D9(scales, rot, 1);
+			cov3d9 = ComputeCov3D9(scales, rot, 1);
+			
 			// cov3d = ComputeCov3Ds(count);
-			this->hsize.resize(count);
-			for (int i=0; i < count; i++) {
-				auto cov3d_9 = ComputeCov3D(i);
-				glm::vec3 posi = glm::vec3(pos[i][0], pos[i][1], pos[i][2]);
+			// this->hsize.resize(count);
+			// for (int i=0; i < count; i++) {
+			// 	auto cov3d_9 = ComputeCov3D(i);
+			// 	glm::vec3 posi = glm::vec3(pos[i][0], pos[i][1], pos[i][2]);
 
-				auto hs = calculateBoundingBoxSize(cov3d_9, posi) * 0.35f;
-				this->hsize[i] = {hs.x, hs.y, hs.z};
-			}
+			// 	auto hs = calculateBoundingBoxSize(cov3d_9, posi) * 0.5f;
+			// 	this->hsize[i] = {hs.x, hs.y, hs.z};
+			// }
 
 			return count;
 		}
@@ -437,54 +438,54 @@ class Gaussian {
 
 		std::vector<std::array<float, 9>> ComputeCov3D9(const std::vector<Scale>& scales, const std::vector<Rot>& rotations, float scale_modifier)
 		{
-			std::vector<std::array<float, 9>> cov3ds;
-			cov3ds.reserve(scales.size());
+			std::vector<std::array<float, 9>> inv_transforms;
+			inv_transforms.reserve(scales.size());
+			this->hsize.resize(scale.size());
+			const float radius_factor = 3.0f;
 
 			for (size_t i = 0; i < scales.size(); i++) {
-				std::array<float, 9> cov;
 				
-				// Construir a matriz de escala S
+				// Construir S e R como antes (com a normalização do quaternião)
 				glm::mat3 S(1.0f);
-				S[0][0] = scale_modifier * scales[i].scale[0];
-				S[1][1] = scale_modifier * scales[i].scale[1];
-				S[2][2] = scale_modifier * scales[i].scale[2];
 
-				// Obter os componentes do quaternion (r, x, y, z)
-				float r = rotations[i].rot[0];
-				float x = rotations[i].rot[1];
-				float y = rotations[i].rot[2];
-				float z = rotations[i].rot[3];
+				S[0][0] = scale_modifier * std::max(0.008f, scales[i].scale[0]);
+				S[1][1] = scale_modifier * std::max(0.008f, scales[i].scale[1]);
+				S[2][2] = scale_modifier * std::max(0.008f, scales[i].scale[2]);
 
-				// Construir a matriz de rotação R a partir do quaternion
-				glm::mat3 R = glm::mat3(
-					1.f - 2.f * (y * y + z * z), 2.f * (x * y - r * z),       2.f * (x * z + r * y),
-					2.f * (x * y + r * z),       1.f - 2.f * (x * x + z * z), 2.f * (y * z - r * x),
-					2.f * (x * z - r * y),       2.f * (y * z + r * x),       1.f - 2.f * (x * x + y * y)
+
+
+
+				glm::quat q(rotations[i].rot[0], rotations[i].rot[1], rotations[i].rot[2], rotations[i].rot[3]);
+				q = glm::normalize(q);
+				glm::mat3 R = glm::mat3(q);
+
+				// 1. Calcule a matriz de transformação M = R * S
+				glm::mat3 M = R * S;
+				
+				
+				glm::mat3 sigma = M * glm::transpose(M);
+				// Calcule o half_size baseado na diagonal de Σ
+				glm::vec3 h_size = glm::vec3(
+					radius_factor * sqrt(std::max(0.0001f, sigma[0][0])),
+					radius_factor * sqrt(std::max(0.0001f, sigma[1][1])),
+					radius_factor * sqrt(std::max(0.0001f, sigma[2][2]))
 				);
+				h_size = h_size * 0.5f; // Half size for the bounding box
 
-				// Calcular M e a matriz de covariância sigma = transpose(M)*M
-				glm::mat3 M = S * R;
-				glm::mat3 sigma = glm::transpose(M) * M;
+				this->hsize[i] = {h_size.x, h_size.y, h_size.z};
+				// 2. Calcule e armazene a INVERSA de M. Esta é a transformação correta S⁻¹ * Rᵀ
+				glm::mat3 M_inv = glm::inverse(M);
 
-				// Inverter sigma para obter sigmaInv (já que a GPU espera a matriz invertida)
-				// glm::mat3 sigmaInv = glm::inverse(sigma);
+				// 3. Achate M_inv em ordem row-major para a GPU
+				std::array<float, 9> inv_m_flat;
+				const glm::mat3& m = M_inv;
+				inv_m_flat[0] = m[0][0]; inv_m_flat[1] = m[1][0]; inv_m_flat[2] = m[2][0];
+				inv_m_flat[3] = m[0][1]; inv_m_flat[4] = m[1][1]; inv_m_flat[5] = m[2][1];
+				inv_m_flat[6] = m[0][2]; inv_m_flat[7] = m[1][2]; inv_m_flat[8] = m[2][2];
 
-				// Armazenar sigmaInv em ordem row-major (GPU espera float[9] em row-major)
-				cov[0] = sigma[0][0];
-				cov[1] = sigma[0][1];
-				cov[2] = sigma[0][2];
-
-				cov[3] = sigma[1][0];
-				cov[4] = sigma[1][1];
-				cov[5] = sigma[1][2];
-
-				cov[6] = sigma[2][0];
-				cov[7] = sigma[2][1];
-				cov[8] = sigma[2][2];
-
-				cov3ds.push_back(cov);
+				inv_transforms.push_back(inv_m_flat);
 			}
-			return cov3ds;
+			return inv_transforms;
 		}
 
 		// Função para calcular o tamanho do cubo a partir da matriz de covariância

@@ -90,6 +90,57 @@ __device__ __forceinline__ float3 linearize( float3 c )
 }
 
 
+__device__ float3 quaternion_rotate(float4 q, float3 v) {
+    // Implementação de rotação por quatérnio
+    float3 qv = make_float3(q.x, q.y, q.z);
+    float uv = dot(qv, v);
+    float uu = dot(qv, qv);
+    float3 qcross = cross(qv, v);
+    return v * (q.w*q.w - uu) + 2.0f * qv * uv + 2.0f * q.w * qcross;
+}
+
+__device__ float gaussian_density(
+    float3 &point,
+    float3 &mean,
+    float3 &scale,
+    float4 &rotation
+) {
+    // 1. Converter para coordenadas locais (relativas ao centro)
+    float3 local_point = point - mean;
+
+    // 2. Normalizar o quatérnio de rotação
+    float norm = sqrtf(rotation.w*rotation.w + 
+                      rotation.x*rotation.x + 
+                      rotation.y*rotation.y + 
+                      rotation.z*rotation.z);
+    if (norm > 0.0f) {
+        rotation.w /= norm;
+        rotation.x /= norm;
+        rotation.y /= norm;
+        rotation.z /= norm;
+    }
+
+    // 3. Aplicar rotação inversa (conjugado)
+    float4 inv_rotation = make_float4(
+        rotation.w, -rotation.x, -rotation.y, -rotation.z
+    );
+    float3 rotated_point = quaternion_rotate(inv_rotation, local_point);
+
+    // 4. Calcular distância quadrática normalizada
+    float3 scaled_point = make_float3(
+        rotated_point.x / scale.x,
+        rotated_point.y / scale.y,
+        rotated_point.z / scale.z
+    );
+
+    // 5. Calcular a forma quadrática
+    float r2 = dot(scaled_point, scaled_point);
+
+    // 6. Função de densidade gaussiana
+    return expf(-0.5f * r2);
+}
+
+
 //------------------------------------------------------------------------------
 //
 //
@@ -111,7 +162,9 @@ static __forceinline__ __device__ void traceRadiance(
     unsigned int u2 = 0; // output only
     unsigned int u3 = payload->depth;
     unsigned int u4 = payload->seed;
-    unsigned int u5 = payload->highGaussian;
+    unsigned int u5 = static_cast<unsigned int>(reinterpret_cast<uintptr_t>(payload) & 0xFFFFFFFF);
+    unsigned int u6 = static_cast<unsigned int>(reinterpret_cast<uintptr_t>(payload) >> 32);
+
     optixTrace(
             handle,
             ray_origin, ray_direction,
@@ -119,18 +172,17 @@ static __forceinline__ __device__ void traceRadiance(
             tmax,
             0.0f,                     // rayTime
             OptixVisibilityMask( 1 ),
-            OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+            OPTIX_RAY_FLAG_ENFORCE_ANYHIT,
             whitted::RAY_TYPE_RADIANCE,        // SBT offset
             whitted::RAY_TYPE_COUNT,           // SBT stride
             whitted::RAY_TYPE_RADIANCE,        // missSBTIndex
-            u0, u1, u2, u3, u4, u5 );
+            u0, u1, u2, u3, u4, u5, u6 );
 
      payload->result.x = __uint_as_float( u0 );
      payload->result.y = __uint_as_float( u1 );
      payload->result.z = __uint_as_float( u2 );
      payload->depth    = 0; // input only
      payload->seed = 0;
-    //  payload->highGaussian = u5;
 }
 
 __forceinline__ __device__ unsigned int getPayloadDepth()
@@ -206,6 +258,36 @@ __forceinline__ __device__ void setPayloadOcclusionCommit()
 }
 
 } // namespace whitted
+
+__device__ __forceinline__ bool invert_3x3(const float* m, float* out) {
+    float det = m[0] * (m[4] * m[8] - m[7] * m[5]) -
+                m[1] * (m[3] * m[8] - m[5] * m[6]) +
+                m[2] * (m[3] * m[7] - m[4] * m[6]);
+
+    if (fabsf(det) < 1e-8f) { // Usar uma tolerância um pouco mais segura
+        return false;
+    }
+
+    float inv_det = 1.0f / det;
+    out[0] = (m[4] * m[8] - m[7] * m[5]) * inv_det;
+    out[1] = (m[2] * m[7] - m[1] * m[8]) * inv_det;
+    out[2] = (m[1] * m[5] - m[2] * m[4]) * inv_det;
+    out[3] = (m[5] * m[6] - m[3] * m[8]) * inv_det;
+    out[4] = (m[0] * m[8] - m[2] * m[6]) * inv_det;
+    out[5] = (m[2] * m[3] - m[0] * m[5]) * inv_det;
+    out[6] = (m[3] * m[7] - m[6] * m[4]) * inv_det;
+    out[7] = (m[6] * m[1] - m[0] * m[7]) * inv_det;
+    out[8] = (m[0] * m[4] - m[1] * m[3]) * inv_det;
+    return true;
+}
+
+__device__ __forceinline__ float3 transform(const float* matrix, const float3& vec) {
+    return make_float3(
+        matrix[0] * vec.x + matrix[1] * vec.y + matrix[2] * vec.z,
+        matrix[3] * vec.x + matrix[4] * vec.y + matrix[5] * vec.z,
+        matrix[6] * vec.x + matrix[7] * vec.y + matrix[8] * vec.z
+    );
+}
 
 __forceinline__ __device__ float3 transformPoint4x3(const float3& p, const float* matrix)
 {
@@ -483,11 +565,9 @@ __forceinline__ __device__ float3 get_GaussianRGB(float3 d, int i, int& level) {
 
     if (level == 0)
         s = whitted::params.g_shs;
-    else
-        s = whitted::params.g_shs_low;
     float3 rgb = SH_C0 * make_float3(s[idx], s[idx + 1], s[idx + 2]);
 
-        /*rgb +=
+        rgb +=
             - SH_C1 * d.y * make_float3(s[idx + 3 * 1 + 0], s[ idx + 3 * 1 +  1], s[idx + 3 * 1 + 2])
             + SH_C1 * d.z * make_float3(s[idx + 3 * 2 + 0], s[ idx + 3 * 2 +  1], s[idx + 3 * 2 + 2])
             - SH_C1 * d.x * make_float3(s[idx + 3 * 3 + 0], s[ idx + 3 * 3 +  1], s[idx + 3 * 3 + 2]);
@@ -513,7 +593,7 @@ __forceinline__ __device__ float3 get_GaussianRGB(float3 d, int i, int& level) {
             SH_C3[3] * d.z * (2.0 * zz - 3.0 * xx - 3.0 * yy) * make_float3(s[idx + 3 * 12 + 0], s[ idx + 3 * 12 +  1], s[idx + 3 * 12 + 2]) +
             SH_C3[4] * d.x * (4.0 * zz - xx - yy) * make_float3(s[idx + 3 * 13 + 0], s[ idx + 3 * 13 +  1], s[idx + 3 * 13 + 2]) +
             SH_C3[5] * d.z * (xx - yy) * make_float3(s[idx + 3 * 14 + 0], s[ idx + 3 * 14 +  1], s[idx + 3 * 14 + 2]) +
-            SH_C3[6] * d.x * (xx - 3.0 * yy) * make_float3(s[idx + 3 * 15 + 0], s[ idx + 3 * 15 +  1], s[idx + 3 * 15 + 2]);*/
+            SH_C3[6] * d.x * (xx - 3.0 * yy) * make_float3(s[idx + 3 * 15 + 0], s[ idx + 3 * 15 +  1], s[idx + 3 * 15 + 2]);
     
     rgb.x += 0.5f;
     rgb.y += 0.5f;
@@ -701,6 +781,73 @@ __device__ sutil::Matrix4x4 createPerspectiveMatrix(float fov, float aspectRatio
     Result[11] = - 1;
     Result[14] = - (2 * farPlane * nearPlane) / (farPlane - nearPlane);
     return Result;
+}
+
+__device__ glm::mat3 getInvCov3D(int idx) {
+    // Constrói uma matriz 3x3 a partir dos 9 elementos armazenados consecutivamente
+    return glm::mat3(
+        whitted::params.g_cov3d9[idx * 9],     whitted::params.g_cov3d9[idx * 9 + 1], whitted::params.g_cov3d9[idx * 9 + 2],
+        whitted::params.g_cov3d9[idx * 9 + 3], whitted::params.g_cov3d9[idx * 9 + 4], whitted::params.g_cov3d9[idx * 9 + 5],
+        whitted::params.g_cov3d9[idx * 9 + 6], whitted::params.g_cov3d9[idx * 9 + 7], whitted::params.g_cov3d9[idx * 9 + 8]
+    );
+}
+
+// Helper para multiplicar uma matriz 3x3 (armazenada como float[9] row-major) por um vetor float3.
+__device__ __forceinline__ float3 transform_matrix_vec(const float* M, const float3& v) {
+    return make_float3(
+        M[0] * v.x + M[1] * v.y + M[2] * v.z,
+        M[3] * v.x + M[4] * v.y + M[5] * v.z,
+        M[6] * v.x + M[7] * v.y + M[8] * v.z
+    );
+}
+
+__device__ bool intersectRayGaussianEllipsoid(
+    const float3& ray_origin,
+    const float3& ray_dir,
+    const float& ray_tmin,
+    const float3& g_mean,
+    const float* inv_transform, // Ponteiro para a matriz float[9]
+    float Q,
+    float& t_hit
+) {
+    const float3 o_prime = transform_matrix_vec(inv_transform, ray_origin - g_mean);
+    const float3 d_prime = transform_matrix_vec(inv_transform, ray_dir);
+
+    const float a = dot(d_prime, d_prime);
+    const float b = 2.0f * dot(o_prime, d_prime);
+    const float c = dot(o_prime, o_prime) - Q;
+
+    const float delta = b * b - 4.0f * a * c;
+
+    if (delta < 0.0f) {
+        return false;
+    }
+
+    const float sqrt_delta = sqrtf(delta);
+    const float q = -0.5f * (b + (b < 0 ? -sqrt_delta : sqrt_delta));
+    
+    float t1 = q / a;
+    float t2 = c / q;
+
+    if (t1 > t2) {
+        float temp = t1;
+        t1 = t2;
+        t2 = temp;
+    }
+
+    // --- TESTE DE VALIDADE CORRIGIDO ---
+    // Verifica se a interseção mais próxima está DENTRO do intervalo válido do raio.
+    if (t1 > ray_tmin) {
+        t_hit = t1;
+        return true;
+    }
+    // Se a primeira estava atrás, verifica a segunda.
+    if (t2 > ray_tmin) {
+        t_hit = t2;
+        return true;
+    }
+
+    return false;
 }
 
 #endif

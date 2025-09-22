@@ -82,17 +82,21 @@ public:
     SUTILAPI ViewMode viewMode() const { return m_viewMode; }
     SUTILAPI void setViewMode(ViewMode val) { m_viewMode = val; }
 
+    // Add new keyboard handler method
+    SUTILAPI bool handleKeyEvent(unsigned char key);
+
+    // Make movement methods public so they can be called from outside
+    SUTILAPI void moveForward(float speed);
+    SUTILAPI void moveBackward(float speed);
+    SUTILAPI void moveLeft(float speed);
+    SUTILAPI void moveRight(float speed);
+    SUTILAPI void moveUp(float speed);
+    SUTILAPI void moveDown(float speed);
+    SUTILAPI void rollLeft(float speed);
+    SUTILAPI void rollRight(float speed);
+
 private:
     void updateCamera();
-
-    void moveForward(float speed);
-    void moveBackward(float speed);
-    void moveLeft(float speed);
-    void moveRight(float speed);
-    void moveUp(float speed);
-    void moveDown(float speed);
-    void rollLeft(float speed);
-    void rollRight(float speed);
 
 private:
     bool         m_gimbalLock               = false;

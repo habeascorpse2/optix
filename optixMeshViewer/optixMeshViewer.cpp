@@ -50,6 +50,7 @@
 #include <sutil/Scene.h>
 #include <sutil/sutil.h>
 #include <sutil/vec_math.h>
+#include <sutil/GaussianScene.h>
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -68,6 +69,7 @@
 
 #include "gaussian.hpp"
 #include "OctreeGaussian.hpp"
+
 
 
 //#define USE_IAS // WAR for broken direct intersection of GAS on non-RTX cards
@@ -133,6 +135,34 @@ void snapshotImage(sutil::CUDAOutputBuffer<uchar4>& output_buffer ) {
     sutil::saveImage( file.c_str(), buffer, false );
 }
 
+// Adicione esta função antes do loop principal
+void handleKeyboardInput(GLFWwindow* window)
+{
+    float currentSpeed = trackball.moveSpeed();
+    
+    // Arrow keys
+    if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || 
+        glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        trackball.moveForward(currentSpeed);
+        camera_changed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || 
+        glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        trackball.moveBackward(currentSpeed);
+        camera_changed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS || 
+        glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        trackball.moveLeft(currentSpeed);
+        camera_changed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS || 
+        glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        trackball.moveRight(currentSpeed);
+        camera_changed = true;
+    }
+}
+
 
 static void mouseButtonCallback( GLFWwindow* window, int button, int action, int mods )
 {
@@ -153,13 +183,13 @@ static void mouseButtonCallback( GLFWwindow* window, int button, int action, int
 
 static void cursorPosCallback( GLFWwindow* window, double xpos, double ypos )
 {
-    if( mouse_button == GLFW_MOUSE_BUTTON_LEFT )
+    if( mouse_button == GLFW_MOUSE_BUTTON_RIGHT )
     {
         trackball.setViewMode( sutil::Trackball::LookAtFixed );
         trackball.updateTracking( static_cast<int>( xpos ), static_cast<int>( ypos ), width, height );
         camera_changed = true;
     }
-    else if( mouse_button == GLFW_MOUSE_BUTTON_RIGHT )
+    else if( mouse_button == GLFW_MOUSE_BUTTON_LEFT )
     {
         trackball.setViewMode( sutil::Trackball::EyeFixed );
         trackball.updateTracking( static_cast<int>( xpos ), static_cast<int>( ypos ), width, height );
@@ -233,7 +263,7 @@ void printUsageAndExit( const char* argv0 )
 }
 
 
-void initLaunchParams( const sutil::Scene& scene ) {
+void initLaunchParams( const sutil::GaussianScene& gscene, const sutil::Scene& scene ) {
     CUDA_CHECK( cudaMalloc(
                 reinterpret_cast<void**>( &params.accum_buffer ),
                 width*height*sizeof(float4)
@@ -254,8 +284,8 @@ void initLaunchParams( const sutil::Scene& scene ) {
 
     // lights[1].type            = Light::Type::POINT;
     // lights[1].point.color     = {1.0f, 1.0f, 1.0f};
-    // lights[1].point.intensity = 10.0f;
-    // lights[1].point.position  = make_float3(26.545f, 12.8f, 2.4f);
+    // lights[1].point.intensity = 5.0f;
+    // lights[1].point.position  = make_float3(0.0f, 2.8f, 0.0f);
     // lights[1].point.falloff   = Light::Falloff::QUADRATIC;
 
     // lights[2].type            = Light::Type::POINT;
@@ -282,12 +312,13 @@ void initLaunchParams( const sutil::Scene& scene ) {
                 cudaMemcpyHostToDevice
                 ) );
 
-    params.miss_color   = make_float3( 0.1f );
+    params.miss_color   = make_float3( 0.5f );
 
     //CUDA_CHECK( cudaStreamCreate( &stream ) );
     CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_params ), sizeof( whitted::LaunchParams ) ) );
 
-    params.handle = scene.traversableHandle();
+    params.ghandle = gscene.traversableHandle();
+    params.handle =  scene.traversableHandle();
 }
 
 void updateModel( ) {
@@ -408,7 +439,7 @@ void initCameraState( const sutil::Scene& scene )
     camera_changed = true;
 
     trackball.setCamera( &camera );
-    trackball.setMoveSpeed( 10.0f );
+    trackball.setMoveSpeed( .03f );
     trackball.setReferenceFrame( make_float3( 1.0f, 0.0f, 0.0f ), make_float3( 0.0f, 0.0f, 1.0f ), make_float3( 0.0f, 1.0f, 0.0f ) );
     trackball.setGimbalLock(true);
 }
@@ -647,25 +678,15 @@ int main( int argc, char* argv[] )
             3, false, 0);
 
         params.g_cov3d = gaussian.cov3d_cuda;
-        // params.g_cov3d9 = gaussian.cov3d9_cuda;
+        params.g_cov3d9 = gaussian.cov3d9_cuda;
         params.g_opacity = gaussian.opacity_cuda;
         params.g_pos = gaussian.pos_cuda;
         params.g_shs = gaussian.shs_cuda;
         params.gcount = gaussian.count;
         params.g_hsize = gaussian.hsize_cuda;
-        // params.g_scale = gaussian.scale_cuda;
-        // params.g_rotation = gaussian.rot_cuda;
+        params.g_scale = gaussian.scale_cuda;
+        params.g_rotation = gaussian.rot_cuda;
         std::cout<<"Count Gaussians 1:" << gaussian.count << std::endl;
-
-        Gaussian gaussianLow((uint) width,(uint) height,
-                sutil::sampleDataFilePath(gaussianFile2.c_str()), 
-                3, false, 0);
-        params.g_cov3d_low = gaussianLow.cov3d_cuda;
-        params.g_opacity_low = gaussianLow.opacity_cuda;
-        params.g_pos_low = gaussianLow.pos_cuda;
-        params.g_shs_low = gaussianLow.shs_cuda;
-        // params.g_scale_low = gaussianLow.scale_cuda;
-        // params.g_rotation_low = gaussianLow.rot_cuda;
 
         params.scaleFactor = 1.0f;
 
@@ -678,22 +699,28 @@ int main( int argc, char* argv[] )
         g_rotation = glm::vec3(0, 0, 0); // Sponza_claro
         
         g_scale =    glm::vec3(1.f, 1.f, 1.f);
-        // g_scale =    make_float3(-0.8f, 0.8f, 0.8f);
         params.gn = 1;
         params.mode = 0;
         params.K = 10;
         updateModel();
 
-        octree = new oct::OctreeGaussian(gaussian, gaussianLow);
+        octree = new oct::OctreeGaussian(gaussian);
         params.octree = octree->deviceOctree;
+
+
+
+        sutil::GaussianScene gscene;
+        gscene.addGaussians(gaussian.pos, gaussian.hsize);
+        gscene.finalize();
+        std::cout << "Carregou a cena gaussiana" << std::endl;
 
         sutil::Scene scene;
         sutil::loadScene( sutil::sampleDataFilePath(infile.c_str()), scene );
         scene.finalize();
-
-        OPTIX_CHECK( optixInit() ); // Need to initialize function table
+        // OPTIX_CHECK( optixInit() ); // Need to initialize function table
         initCameraState( scene );
-        camera.setFovY(45.f);
+        camera.setFovY(60.f);
+        params.aabb_buffer = gscene.getAABB_Buffer();
         //Sponza Teapot
         // camera.setEye({5.53784f, 2.0f, -0.61609f});
         // camera.setDirection({-0.983589f, 0.f, -0.029241});
@@ -704,7 +731,8 @@ int main( int argc, char* argv[] )
 
         // trackball.setCamera( &camera );
         
-        initLaunchParams( scene );
+        initLaunchParams( gscene, scene );
+        std::cout << "Iniciado o LaunchParams" << std::endl;
 
 
         if( outfile.empty() )
@@ -731,11 +759,13 @@ int main( int argc, char* argv[] )
                 std::chrono::duration<double> state_update_time( 0.0 );
                 std::chrono::duration<double> render_time( 0.0 );
                 std::chrono::duration<double> display_time( 0.0 );
+                std::cout << "Vamos entrar no loop" << std::endl;
                 do
                 {
                     auto t0 = std::chrono::steady_clock::now();
                     glfwPollEvents();
-
+                    
+                    handleKeyboardInput(window);
                     
                     updateState( output_buffer, params );
                     auto t1 = std::chrono::steady_clock::now();
@@ -818,3 +848,5 @@ int main( int argc, char* argv[] )
 
     return 0;
 }
+
+

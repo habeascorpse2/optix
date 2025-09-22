@@ -1,15 +1,9 @@
 #pragma once
 #include "whitted.h"
-#define OCTNODE_SIZE 75
+#define OCTNODE_SIZE 50
 
 namespace minstack {
 
-    
-    struct octnode{
-        float z;
-        int index;
-        // unsigned char type;
-    };
     //Não alterar
     __device__ void heapifyUp(octnode* dtree, int &size,int index, octnode value) {
 

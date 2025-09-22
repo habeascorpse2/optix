@@ -27,6 +27,7 @@
 #
 
 OPTIX_add_sample_executable( optixMeshViewer target_name
+  # GaussianScene.cpp
   optixMeshViewer.cpp
 
   OPTIONS -rdc true

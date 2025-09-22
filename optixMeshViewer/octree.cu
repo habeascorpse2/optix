@@ -45,19 +45,18 @@ struct OctreeD {
 // Estrutura do nó da Octree
 struct OctreeNode {
     std::vector<Cube> cubes_0;
-    std::vector<Cube> cubes_1;
+    // std::vector<Cube> cubes_1;
     int children[8]; // Índices dos filhos
     Cube boundary;
     bool is_leaf;
     int numCubes_0;
-    int numCubes_1;
+    // int numCubes_1;
     int branchCubes;
     int level;
 
     __host__ __device__
-    OctreeNode() : numCubes_0(0), numCubes_1(0), branchCubes(0) {
+    OctreeNode() : numCubes_0(0), branchCubes(0) {
         cubes_0.resize(0);
-        cubes_1.resize(0);
         level = 0;
         for (int i = 0; i < 8; ++i) {
             children[i] = -1;
@@ -141,7 +140,6 @@ struct Octree {
             OctreeNode *childNode = new OctreeNode();
             childNode->level = level;
             childNode->cubes_0.resize(0);
-            childNode->cubes_1.resize(0);
             childNode->boundary = childBoundary;
             childNode->is_leaf = false;
             nodes_host.push_back(childNode);
@@ -226,10 +224,7 @@ struct Octree {
                 node->numCubes_0++;
                 node->cubes_0.push_back(cube);
             }
-            else {
-                node->numCubes_1++;
-                node->cubes_1.push_back(cube);
-            }
+            
             
             count = count + 1;
             return;
@@ -254,7 +249,6 @@ struct Octree {
                     node->branchCubes +=flagOctree(node->children[i]);
             }
             node->branchCubes += node->numCubes_0;
-            node->branchCubes += node->numCubes_1;
             return node->branchCubes;
         }
 
@@ -277,9 +271,7 @@ struct Octree {
 
             h_data[i].boundary = node->boundary;
             h_data[i].numCubes_0 = node->numCubes_0;
-            h_data[i].numCubes_1 = node->numCubes_1;
             h_data[i].cubes_0 = nullptr;
-            h_data[i].cubes_1 = nullptr;
             h_data[i].branchCubes = node->branchCubes;
             // h_data[i].is_leaf = node->is_leaf;
             if (node->numCubes_0 > 0) {
@@ -289,13 +281,7 @@ struct Octree {
                     ccubes[j] = node->cubes_0[j].index;
                 h_data[i].cubes_0= ccubes;
             }
-            if (node->numCubes_1 > 0) {
-                int *ccubes;
-                ccubes = (int *)malloc(node->numCubes_1 * sizeof(int));
-                for (int j=0; j < node->numCubes_1; j++)
-                    ccubes[j] = node->cubes_1[j].index;
-                h_data[i].cubes_1 = ccubes;
-            }
+            
         }
 
          // Alocar memória na GPU para o array de OctreeNodeD
@@ -315,13 +301,13 @@ struct Octree {
             checkCudaError(cudaMemcpy(&d_nodes[i].cubes_0, &d_cubes_0, sizeof(int*), cudaMemcpyHostToDevice), "Updating d_nodes[i].cubes");
             delete h_data[i].cubes_0;
 
-            int *d_cubes_1;
-            checkCudaError(cudaMalloc(&d_cubes_1, h_data[i].numCubes_1 * sizeof(int)), "Allocating d_cubes");
-            checkCudaError(cudaMemcpy(d_cubes_1, h_data[i].cubes_1, h_data[i].numCubes_1 * sizeof(int), cudaMemcpyHostToDevice), "Copying cubes to d_cubes");
+            // int *d_cubes_1;
+            // checkCudaError(cudaMalloc(&d_cubes_1, h_data[i].numCubes_1 * sizeof(int)), "Allocating d_cubes");
+            // checkCudaError(cudaMemcpy(d_cubes_1, h_data[i].cubes_1, h_data[i].numCubes_1 * sizeof(int), cudaMemcpyHostToDevice), "Copying cubes to d_cubes");
 
-            // Atualizar o ponteiro cubes na GPU
-            checkCudaError(cudaMemcpy(&d_nodes[i].cubes_1, &d_cubes_1, sizeof(int*), cudaMemcpyHostToDevice), "Updating d_nodes[i].cubes");
-            delete h_data[i].cubes_1;
+            // // Atualizar o ponteiro cubes na GPU
+            // checkCudaError(cudaMemcpy(&d_nodes[i].cubes_1, &d_cubes_1, sizeof(int*), cudaMemcpyHostToDevice), "Updating d_nodes[i].cubes");
+            // delete h_data[i].cubes_1;
         }
         delete h_data;
 
@@ -430,16 +416,16 @@ __device__ int searchIntersectingNodes(OctreeNodeD* nodes, const glm::vec3& orig
             if (boundary.center.z > 0.2f)
                 insert(n, octStack, count);
         }
-        else {
-            if (level == 1 && node.numCubes_1 > 0) {
-                octnode n;
-                n.index = nodeIndex;
-                Cube boundary = applyCenterTransformation(node.boundary, viewMatrix);
-                n.z = boundary.center.z;
-                // n.type = 1;
-                insert(n, octStack, count);
-            }
-        }
+        // else {
+        //     if (level == 1 && node.numCubes_1 > 0) {
+        //         octnode n;
+        //         n.index = nodeIndex;
+        //         Cube boundary = applyCenterTransformation(node.boundary, viewMatrix);
+        //         n.z = boundary.center.z;
+        //         // n.type = 1;
+        //         insert(n, octStack, count);
+        //     }
+        // }
         
 
         // Adiciona os filhos à pilha
@@ -475,9 +461,6 @@ __device__ int searchIntersectingNodes(OctreeNodeD* nodes, const glm::vec3& orig
             results[count++] = nodeIndex;
         }
 
-        if (level == 1 && node.numCubes_1 > 0) {
-            results[count++] = nodeIndex;
-        }
 
         // Adiciona os filhos à pilha
         for (int i = 0; i < 8; ++i) {
@@ -514,9 +497,6 @@ __device__ int searchInsideNode(OctreeNodeD* nodes, const glm::vec3& origin, int
             results[count++] = nodeIndex;
         }
 
-        if (level == 1 && node.numCubes_1 > 0) {
-            results[count++] = nodeIndex;
-        }
 
         // Adiciona os filhos à pilha
         for (int i = 0; i < 8; ++i) {

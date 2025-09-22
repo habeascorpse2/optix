@@ -178,6 +178,30 @@ GLDisplay.cpp.s:
 	cd /home/alan/dev/optix/SDK && $(MAKE) $(MAKESILENT) -f sutil/CMakeFiles/sutil_7_sdk.dir/build.make sutil/CMakeFiles/sutil_7_sdk.dir/GLDisplay.cpp.s
 .PHONY : GLDisplay.cpp.s
 
+GaussianScene.o: GaussianScene.cpp.o
+.PHONY : GaussianScene.o
+
+# target to build an object file
+GaussianScene.cpp.o:
+	cd /home/alan/dev/optix/SDK && $(MAKE) $(MAKESILENT) -f sutil/CMakeFiles/sutil_7_sdk.dir/build.make sutil/CMakeFiles/sutil_7_sdk.dir/GaussianScene.cpp.o
+.PHONY : GaussianScene.cpp.o
+
+GaussianScene.i: GaussianScene.cpp.i
+.PHONY : GaussianScene.i
+
+# target to preprocess a source file
+GaussianScene.cpp.i:
+	cd /home/alan/dev/optix/SDK && $(MAKE) $(MAKESILENT) -f sutil/CMakeFiles/sutil_7_sdk.dir/build.make sutil/CMakeFiles/sutil_7_sdk.dir/GaussianScene.cpp.i
+.PHONY : GaussianScene.cpp.i
+
+GaussianScene.s: GaussianScene.cpp.s
+.PHONY : GaussianScene.s
+
+# target to generate assembly for a file
+GaussianScene.cpp.s:
+	cd /home/alan/dev/optix/SDK && $(MAKE) $(MAKESILENT) -f sutil/CMakeFiles/sutil_7_sdk.dir/build.make sutil/CMakeFiles/sutil_7_sdk.dir/GaussianScene.cpp.s
+.PHONY : GaussianScene.cpp.s
+
 PPMLoader.o: PPMLoader.cpp.o
 .PHONY : PPMLoader.o
 
@@ -289,6 +313,9 @@ help:
 	@echo "... GLDisplay.o"
 	@echo "... GLDisplay.i"
 	@echo "... GLDisplay.s"
+	@echo "... GaussianScene.o"
+	@echo "... GaussianScene.i"
+	@echo "... GaussianScene.s"
 	@echo "... PPMLoader.o"
 	@echo "... PPMLoader.i"
 	@echo "... PPMLoader.s"
