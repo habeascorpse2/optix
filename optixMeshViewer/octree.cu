@@ -18,7 +18,7 @@ cudaDeviceSynchronize(); \
 if (cudaPeekAtLastError() != cudaSuccess) \
 	std::cerr << cudaGetErrorString(cudaGetLastError()) << std::endl;
 
-#define MAX_RESULTS 55
+#define MAX_RESULTS 40
 #define MIN_SIZE .5f
 // Estrutura do cubo
 

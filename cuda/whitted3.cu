@@ -353,7 +353,7 @@ extern "C" __global__ void __closesthit__radiance()
                         if (opacity > 0 ) {      
                             whitted::DepthGaussian d;
                             int level = 0;
-                            d.c = make_float4(get_GaussianRGB(dir, idx, level), opacity);
+                            d.c = make_float4(get_GaussianRGB(dir, idx, true), opacity);
                             d.z = p_view.z;
                             GSM_insert(d, &dtree[0], size);
                         }
@@ -466,7 +466,7 @@ extern "C" __global__ void __closesthit__radiance()
                                             break;
                                         }
                                         
-                                        float3 color = get_GaussianRGB(dir, idx, lvl);
+                                        float3 color = get_GaussianRGB(dir, idx, true);
                                         result += color  * opacity * T;
 
                                         T = test_T;
@@ -474,7 +474,7 @@ extern "C" __global__ void __closesthit__radiance()
                                     else {
                                         whitted::DepthGaussian d;
                                         int lvl = 0;
-                                        d.c = make_float4(get_GaussianRGB(dir, idx, lvl), opacity);
+                                        d.c = make_float4(get_GaussianRGB(dir, idx, true), opacity);
                                         d.z = p_view.z;
                                         if (!stack.contains(idx) && stack.push(idx))
                                             GSM_insert(d, &dtree[0], size);
@@ -678,7 +678,7 @@ extern "C" __global__ void __closesthit__radiance()
                         float cov3D[6];
 
                         if (whitted::params.mode == 3) {
-                            computeCov3D(glm::vec3(0.005f), whitted::params.scaleFactor, glm::vec4(1.0f), cov3D);
+                            computeCov3D(glm::vec3(0.005f), 1.0f, glm::vec4(1.0f), cov3D);
                         }
                         else
                             if (level == 0) {
@@ -715,7 +715,7 @@ extern "C" __global__ void __closesthit__radiance()
                             if (opacity > 0 ) {      
                                 whitted::DepthGaussian d;
                                 int lvl = highGaussian -1;
-                                d.c = make_float4(get_GaussianRGB(dir, idx, lvl), opacity);
+                                d.c = make_float4(get_GaussianRGB(dir, idx, true), opacity);
                                 d.z = p_view.z;
                                 GSM_insert(d, &dtree[0], size);
                             }

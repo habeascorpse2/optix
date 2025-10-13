@@ -151,7 +151,7 @@ const unsigned int NUM_ATTRIBUTE_VALUES = 4u;
 const unsigned int NUM_PAYLOAD_VALUES   = 10u;
 const unsigned int MAX_TRACE_DEPTH      = 2u;
 
-const unsigned int GSM_MAX_SIZE = 60;
+const unsigned int GSM_MAX_SIZE = 40;
 // const unsigned int gaussian_block = 200;
 const unsigned int WIDTH = 800;
 const unsigned int HEIGHT = 600;
@@ -201,6 +201,9 @@ struct LaunchParams
     CUdeviceptr aabb_buffer;
     OptixTraversableHandle   handle;
     OptixTraversableHandle   ghandle;
+    OptixTraversableHandle   ghandle2;
+
+    cudaTextureObject_t      reflection_texture; // Add this line
 
     int gcount;
     int gn;
@@ -212,8 +215,14 @@ struct LaunchParams
     float* g_cov3d;
     float* g_cov3d9;
     float* g_hsize;
-    float* g_scale;
-    float* g_rotation;
+    // float* g_scale;
+    // float* g_rotation;
+
+    float* g2_pos;
+    float* g2_opacity;
+    float* g2_shs;
+    float* g2_cov3d9;
+    float* g2_hsize;
 
     OctreeNodeD*  octree;
 
@@ -224,7 +233,7 @@ struct LaunchParams
 
     glm::mat4 projMatrix;
     glm::mat4 modelMatrix;
-    float scaleFactor;
+    // float scaleFactor;
 
     float2 focal;
     float near;
@@ -249,6 +258,7 @@ struct PayloadRadiance
     float3       ray_dir;
     float3       ray_origin;
     int         htype; // 0 = RADIANCE, 1 = gaussians
+    bool fov = true;
 
     octnode gstack[GSM_MAX_SIZE];
     int stackSize = 0;

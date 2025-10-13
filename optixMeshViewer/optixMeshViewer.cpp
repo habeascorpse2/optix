@@ -70,6 +70,9 @@
 #include "gaussian.hpp"
 #include "OctreeGaussian.hpp"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <support/tinygltf/stb_image.h>
+
 
 
 //#define USE_IAS // WAR for broken direct intersection of GAS on non-RTX cards
@@ -115,12 +118,72 @@ float yAxis = 0.f;
 oct::OctreeGaussian *octree;
 oct::OctreeGaussian *octreeLow;
  
-//------------------------------------------------------------------------------
-//
-// GLFW callbacks
-//
-//------------------------------------------------------------------------------
 
+// Função para carregar um arquivo .jpg e retornar um buffer de float4
+std::vector<float4> loadJPG(const std::string& filename, int& width, int& height)
+{
+    int channels;
+    unsigned char* data = stbi_load(filename.c_str(), &width, &height, &channels, 4);
+    if (!data)
+    {
+        std::cerr << "ERRO ao carregar JPG: " << filename << std::endl;
+        return {};
+    }
+
+    std::vector<float4> buffer(width * height);
+    for (int i = 0; i < width * height; ++i)
+    {
+        // Converte os valores de 0-255 para 0.0-1.0
+        buffer[i] = make_float4(
+            data[4 * i + 0] / 255.0f,
+            data[4 * i + 1] / 255.0f,
+            data[4 * i + 2] / 255.0f,
+            data[4 * i + 3] / 255.0f
+        );
+    }
+
+    stbi_image_free(data);
+    return buffer;
+}
+
+cudaTextureObject_t createReflectionTexture(const std::string& jpg_path)
+{
+    int width = 0;
+    int height = 0;
+    std::vector<float4> reflection_buffer = loadJPG(jpg_path, width, height);
+
+    if (reflection_buffer.empty())
+    {
+        return 0;
+    }
+
+    // Criar um array CUDA para a textura
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 32, 32, 32, cudaChannelFormatKindFloat);
+    cudaArray_t cuArray;
+    CUDA_CHECK(cudaMallocArray(&cuArray, &channelDesc, width, height));
+
+    // Copiar o buffer do host para o array CUDA
+    CUDA_CHECK(cudaMemcpy2DToArray(cuArray, 0, 0, reflection_buffer.data(), width * sizeof(float4), width * sizeof(float4), height, cudaMemcpyHostToDevice));
+
+    // Descrever o recurso de textura
+    cudaResourceDesc resDesc = {};
+    resDesc.resType = cudaResourceTypeArray;
+    resDesc.res.array.array = cuArray;
+
+    // Descrever a textura
+    cudaTextureDesc texDesc = {};
+    texDesc.addressMode[0] = cudaAddressModeWrap;
+    texDesc.addressMode[1] = cudaAddressModeClamp;
+    texDesc.filterMode = cudaFilterModeLinear;
+    texDesc.readMode = cudaReadModeElementType;
+    texDesc.normalizedCoords = 1;
+
+    // Criar e retornar o objeto de textura
+    cudaTextureObject_t cudaTex;
+    CUDA_CHECK(cudaCreateTextureObject(&cudaTex, &resDesc, &texDesc, nullptr));
+
+    return cudaTex;
+}
 
 void snapshotImage(sutil::CUDAOutputBuffer<uchar4>& output_buffer ) {
     sutil::ImageBuffer buffer;
@@ -163,9 +226,23 @@ void handleKeyboardInput(GLFWwindow* window)
     }
 }
 
+//------------------------------------------------------------------------------
+//
+// GLFW callbacks
+//
+//------------------------------------------------------------------------------
 
 static void mouseButtonCallback( GLFWwindow* window, int button, int action, int mods )
 {
+    // Adicione esta verificação no início da função
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse)
+    {
+        // Se o ImGui quer o mouse, não faça nada para a câmera e retorne.
+        // O backend do ImGui para GLFW já cuidará de passar o evento para o ImGui.
+        return;
+    }
+
     double xpos, ypos;
     glfwGetCursorPos( window, &xpos, &ypos );
 
@@ -183,6 +260,14 @@ static void mouseButtonCallback( GLFWwindow* window, int button, int action, int
 
 static void cursorPosCallback( GLFWwindow* window, double xpos, double ypos )
 {
+    // Adicione esta verificação também aqui
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse)
+    {
+        // O mouse está sobre uma janela do ImGui, então não mova a câmera.
+        return;
+    }
+
     if( mouse_button == GLFW_MOUSE_BUTTON_RIGHT )
     {
         trackball.setViewMode( sutil::Trackball::LookAtFixed );
@@ -222,6 +307,13 @@ static void windowIconifyCallback( GLFWwindow* window, int32_t iconified )
 
 static void keyCallback( GLFWwindow* window, int32_t key, int32_t /*scancode*/, int32_t action, int32_t /*mods*/ )
 {
+    // É uma boa prática adicionar a verificação para o teclado também
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureKeyboard)
+    {
+        return;
+    }
+
     if( action == GLFW_PRESS )
     {
         if( key == GLFW_KEY_ESCAPE )
@@ -238,6 +330,13 @@ static void keyCallback( GLFWwindow* window, int32_t key, int32_t /*scancode*/, 
 
 static void scrollCallback( GLFWwindow* window, double xscroll, double yscroll )
 {
+    // E finalmente, adicione a verificação para o scroll
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse)
+    {
+        return;
+    }
+
     if(trackball.wheelEvent((int)yscroll))
         camera_changed = true;
 }
@@ -317,7 +416,8 @@ void initLaunchParams( const sutil::GaussianScene& gscene, const sutil::Scene& s
     //CUDA_CHECK( cudaStreamCreate( &stream ) );
     CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_params ), sizeof( whitted::LaunchParams ) ) );
 
-    params.ghandle = gscene.traversableHandle();
+    params.ghandle = gscene.traversableHandle1();
+    params.ghandle2 = gscene.traversableHandle2();
     params.handle =  scene.traversableHandle();
 }
 
@@ -547,7 +647,7 @@ void printGui(double frameTime) {
     
     ImGui::Separator();
 
-    ImGui::SliderFloat("Scale Factor", &params.scaleFactor, 0.1f, 3.0f);
+    // ImGui::SliderFloat("Scale Factor", &params.scaleFactor, 0.1f, 3.0f);
 
 
     // ImGui::Separator();
@@ -604,8 +704,9 @@ int main( int argc, char* argv[] )
     std::string infile;
     std::string gaussianFile1;
     std::string gaussianFile2;
+    std::string envFile;
     
-    
+    envFile = "shperical_map.jpg";
     
 
     // output_buffer_type = sutil::CUDAOutputBufferType::CUDA_DEVICE;
@@ -637,6 +738,12 @@ int main( int argc, char* argv[] )
             if( i >= argc - 1 )
                 printUsageAndExit( argv[0] );
             gaussianFile2 = argv[++i];
+        }
+        else if( arg == "--env")
+        {
+            if( i >= argc - 1 )
+                printUsageAndExit( argv[0] );
+            envFile = argv[++i];
         }
         else if( arg == "--file" || arg == "-f" )
         {
@@ -684,11 +791,21 @@ int main( int argc, char* argv[] )
         params.g_shs = gaussian.shs_cuda;
         params.gcount = gaussian.count;
         params.g_hsize = gaussian.hsize_cuda;
-        params.g_scale = gaussian.scale_cuda;
-        params.g_rotation = gaussian.rot_cuda;
-        std::cout<<"Count Gaussians 1:" << gaussian.count << std::endl;
 
-        params.scaleFactor = 1.0f;
+        Gaussian gaussian2((uint) width,(uint) height,
+            sutil::sampleDataFilePath(gaussianFile2.c_str()), 
+            3, false, 0);
+
+        params.g2_cov3d9 = gaussian2.cov3d9_cuda;
+        params.g2_opacity = gaussian2.opacity_cuda;
+        params.g2_pos = gaussian2.pos_cuda;
+        params.g2_shs = gaussian2.shs_cuda;
+        params.g2_hsize = gaussian2.hsize_cuda;
+
+        std::cout<<"Count Gaussians 1:" << gaussian.count << std::endl;
+        std::cout<<"Count Gaussians 2:" << gaussian2.count << std::endl;
+
+        // params.scaleFactor = 1.0f;
 
         updateProjectionMatrix();
         
@@ -711,8 +828,12 @@ int main( int argc, char* argv[] )
 
         sutil::GaussianScene gscene;
         gscene.addGaussians(gaussian.pos, gaussian.hsize);
+        gscene.addGaussiansLow(gaussian2.pos, gaussian2.hsize);
         gscene.finalize();
         std::cout << "Carregou a cena gaussiana" << std::endl;
+
+        cudaTextureObject_t reflection_texture = createReflectionTexture(envFile);
+        params.reflection_texture = reflection_texture; // Add this line
 
         sutil::Scene scene;
         sutil::loadScene( sutil::sampleDataFilePath(infile.c_str()), scene );
@@ -720,7 +841,7 @@ int main( int argc, char* argv[] )
         // OPTIX_CHECK( optixInit() ); // Need to initialize function table
         initCameraState( scene );
         camera.setFovY(60.f);
-        params.aabb_buffer = gscene.getAABB_Buffer();
+        // params.aabb_buffer = gscene.getAABB_Buffer1();
         //Sponza Teapot
         // camera.setEye({5.53784f, 2.0f, -0.61609f});
         // camera.setDirection({-0.983589f, 0.f, -0.029241});
@@ -730,7 +851,7 @@ int main( int argc, char* argv[] )
         // camera.setDirection({0.097194f, -0.207912f, -0.973307});
 
         // trackball.setCamera( &camera );
-        
+
         initLaunchParams( gscene, scene );
         std::cout << "Iniciado o LaunchParams" << std::endl;
 

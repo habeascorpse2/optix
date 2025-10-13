@@ -46,31 +46,36 @@ public:
     SUTILAPI void addCamera(const Camera& camera);
     SUTILAPI void addGaussians(const std::vector<Pos>& positions, 
                               const std::vector<Pos>& half_sizes);
+    SUTILAPI void addGaussiansLow(const std::vector<Pos>& positions, 
+                              const std::vector<Pos>& half_sizes);
+
     SUTILAPI void finalize();
     SUTILAPI void cleanup();
     
     // Getters
     SUTILAPI Camera camera() const;
-    SUTILAPI OptixPipeline pipeline() const { return m_pipeline; }
-    SUTILAPI const OptixShaderBindingTable* sbt() const { return &m_sbt; }
-    SUTILAPI OptixTraversableHandle traversableHandle() const { return m_ias_handle; }
+    
+    SUTILAPI OptixTraversableHandle traversableHandle1() const { return m_ias_handle1; }
+    SUTILAPI OptixTraversableHandle traversableHandle2() const { return m_ias_handle2; }
     SUTILAPI OptixDeviceContext context() const { return m_context; }
-    SUTILAPI sutil::Aabb                                    aabb() const              { return m_scene_aabb; }
-    SUTILAPI CUdeviceptr getAABB_Buffer() { return m_gaussian_group->d_aabb_buffer; }
+    SUTILAPI sutil::Aabb                                    aabb1() const              { return m_scene_aabb1; }
+    SUTILAPI CUdeviceptr getAABB_Buffer1() { return m_gaussian_group1->d_aabb_buffer; }
+    SUTILAPI sutil::Aabb                                    aabb2() const              { return m_scene_aabb2; }
+    SUTILAPI CUdeviceptr getAABB_Buffer2() { return m_gaussian_group2->d_aabb_buffer; }
 
 private:
     void createContext();
-    void buildGaussianAccels();
-    void buildInstanceAccel();
-    void createPTXModule();
-    void createProgramGroups();
-    void createPipeline();
-    void createSBT();
+    void buildGaussianAccels(std::shared_ptr<GaussianGroup> m_gaussian_group);
+    void buildInstanceAccel(std::shared_ptr<GaussianGroup> m_gaussian_group, OptixTraversableHandle& m_ias_handle, CUdeviceptr m_d_ias_output_buffer);
+
 
     // Scene data
     std::vector<Camera> m_cameras;
-    std::shared_ptr<GaussianGroup> m_gaussian_group;
-    sutil::Aabb m_scene_aabb;
+    std::shared_ptr<GaussianGroup> m_gaussian_group1;
+    sutil::Aabb m_scene_aabb1;
+
+    std::shared_ptr<GaussianGroup> m_gaussian_group2;
+    sutil::Aabb m_scene_aabb2;
     
     // OptiX structures
     OptixDeviceContext m_context = 0;
@@ -80,8 +85,11 @@ private:
     OptixProgramGroup m_raygen_prog_group = 0;
     OptixProgramGroup m_miss_group = 0;
     OptixProgramGroup                    m_radiance_hit_group       = 0;
-    OptixTraversableHandle m_ias_handle = 0;
-    CUdeviceptr m_d_ias_output_buffer = 0;
+    OptixTraversableHandle m_ias_handle1 = 0;
+    CUdeviceptr m_d_ias_output_buffer1 = 0;
+
+    OptixTraversableHandle m_ias_handle2 = 0;
+    CUdeviceptr m_d_ias_output_buffer2 = 0;
     
     // Pipeline options
     OptixPipelineCompileOptions m_pipeline_compile_options = {};

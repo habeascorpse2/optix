@@ -559,12 +559,14 @@ __forceinline__ __device__ void getRect(const float2 p, int2 ext_rect, uint2& re
 	};
 }
 
-__forceinline__ __device__ float3 get_GaussianRGB(float3 d, int i, int& level) {
+__forceinline__ __device__ float3 get_GaussianRGB(float3 d, int i, bool fov) {
     int idx = i * 48;
     float* s;
 
-    if (level == 0)
+    if (fov)
         s = whitted::params.g_shs;
+    else
+        s = whitted::params.g2_shs;
     float3 rgb = SH_C0 * make_float3(s[idx], s[idx + 1], s[idx + 2]);
 
         rgb +=
@@ -848,6 +850,27 @@ __device__ bool intersectRayGaussianEllipsoid(
     }
 
     return false;
+}
+
+__device__ float3* getPos(int id, bool fov) {
+    if (fov)
+        return reinterpret_cast<float3*>(&whitted::params.g_pos[id * 3]);
+    else
+        return reinterpret_cast<float3*>(&whitted::params.g2_pos[id * 3]);
+}
+
+__device__ float* getCov9(int id, bool fov) {
+    if (fov)
+        return &whitted::params.g_cov3d9[id * 9];
+    else
+        return &whitted::params.g2_cov3d9[id * 9];
+}
+
+__device__ float getGOpacity(int id, bool fov) {
+    if (fov)
+        return whitted::params.g_opacity[id];
+    else
+        return whitted::params.g2_opacity[id];
 }
 
 #endif

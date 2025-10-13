@@ -448,9 +448,9 @@ class Gaussian {
 				// Construir S e R como antes (com a normalização do quaternião)
 				glm::mat3 S(1.0f);
 
-				S[0][0] = scale_modifier * std::max(0.008f, scales[i].scale[0]);
-				S[1][1] = scale_modifier * std::max(0.008f, scales[i].scale[1]);
-				S[2][2] = scale_modifier * std::max(0.008f, scales[i].scale[2]);
+				S[0][0] = scale_modifier * std::max(0.03f, scales[i].scale[0]);
+				S[1][1] = scale_modifier * std::max(0.03f, scales[i].scale[1]);
+				S[2][2] = scale_modifier * std::max(0.03f, scales[i].scale[2]);
 
 
 
@@ -466,11 +466,11 @@ class Gaussian {
 				glm::mat3 sigma = M * glm::transpose(M);
 				// Calcule o half_size baseado na diagonal de Σ
 				glm::vec3 h_size = glm::vec3(
-					radius_factor * sqrt(std::max(0.0001f, sigma[0][0])),
-					radius_factor * sqrt(std::max(0.0001f, sigma[1][1])),
-					radius_factor * sqrt(std::max(0.0001f, sigma[2][2]))
+					radius_factor * sqrt(std::max(0.0002f, sigma[0][0])),
+					radius_factor * sqrt(std::max(0.0002f, sigma[1][1])),
+					radius_factor * sqrt(std::max(0.0002f, sigma[2][2]))
 				);
-				h_size = h_size * 0.5f; // Half size for the bounding box
+				h_size = h_size * 0.6f; // Half size for the bounding box
 
 				this->hsize[i] = {h_size.x, h_size.y, h_size.z};
 				// 2. Calcule e armazene a INVERSA de M. Esta é a transformação correta S⁻¹ * Rᵀ
