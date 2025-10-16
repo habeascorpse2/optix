@@ -90,6 +90,8 @@ __device__ __forceinline__ float3 linearize( float3 c )
 }
 
 
+
+
 __device__ float3 quaternion_rotate(float4 q, float3 v) {
     // Implementação de rotação por quatérnio
     float3 qv = make_float3(q.x, q.y, q.z);
@@ -736,6 +738,17 @@ __forceinline__ __device__ float getOpacity(float alpha, float3 conic) {
 
 
 
+__device__  float linear_to_srgb(float linear)
+{
+    if (linear <= 0.0f) return 0.0f;
+    if (linear >= 1.0f) return 1.0f;
+    return (linear <= 0.0031308f) ? (linear * 12.92f) : (1.055f * powf(linear, 1.0f / 2.4f) - 0.055f);
+}
+
+__device__  float3 linear_to_srgb(float3 linear)
+{
+    return make_float3(linear_to_srgb(linear.x), linear_to_srgb(linear.y), linear_to_srgb(linear.z));
+}
 
 // Função para converter um componente de cor sRGB para linear
 __device__ float sRGBToLinear(float c) {

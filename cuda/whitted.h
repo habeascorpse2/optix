@@ -183,67 +183,56 @@ enum RayType
 
 struct LaunchParams
 {
-    unsigned int             width;
-    unsigned int             height;
-    unsigned int             subframe_index;
-    float4*                  accum_buffer;
-    uchar4*                  frame_buffer;
-    int                      max_depth;
-    float                    scene_epsilon;
+    // --- INÍCIO DA CORREÇÃO DE ALINHAMENTO ---
+    // Agrupar membros por tamanho (maior para o menor) para garantir layout consistente.
 
+    // Membros de 16 bytes (128 bits)
+    sutil::Matrix4x4 projMatrix;
+    sutil::Matrix4x4 modelMatrix;
+    sutil::Matrix4x4 viewMatrix;
+
+    // Membros de 8 bytes (64 bits) - Ponteiros e Handles
+    float4*                  accum_buffer;
+    uchar4*                  frame_buffer_ptr;
+    BufferView<Light>        lights;
+    CUdeviceptr              aabb_buffer;
+    OptixTraversableHandle   handle;
+    OptixTraversableHandle   ghandle;
+    OptixTraversableHandle   ghandle2;
+    cudaTextureObject_t      reflection_texture;
+
+    float*                   g_pos;
+    float*                   g_opacity;
+    float*                   g_shs;
+    float*                   g_cov3d;
+    float*                   g_cov3d9;
+    float*                   g_hsize;
+    float*                   g2_pos;
+    float*                   g2_opacity;
+    float*                   g2_shs;
+    float*                   g2_cov3d9;
+    float*                   g2_hsize;
+    OctreeNodeD*             octree;
+
+    // Membros de 12 bytes
     float3                   eye;
     float3                   U;
     float3                   V;
     float3                   W;
-
-    BufferView<Light>        lights;
     float3                   miss_color;
-    CUdeviceptr aabb_buffer;
-    OptixTraversableHandle   handle;
-    OptixTraversableHandle   ghandle;
-    OptixTraversableHandle   ghandle2;
-
-    cudaTextureObject_t      reflection_texture; // Add this line
-
-    int gcount;
-    int gn;
-    int gs;
-    int K;
-    float* g_pos;
-    float* g_opacity;
-    float* g_shs;
-    float* g_cov3d;
-    float* g_cov3d9;
-    float* g_hsize;
-    // float* g_scale;
-    // float* g_rotation;
-
-    float* g2_pos;
-    float* g2_opacity;
-    float* g2_shs;
-    float* g2_cov3d9;
-    float* g2_hsize;
-
-    OctreeNodeD*  octree;
-
     
+    unsigned int             width;
+    unsigned int             height;
+    unsigned int             subframe_index;
+    int                      max_depth;
+    float                    scene_epsilon;
+    int gcount;
     int mode;
-    // bool highGaussian;
     float roughness;
+    float                    near;
+    float                    fov;
 
-    glm::mat4 projMatrix;
-    glm::mat4 modelMatrix;
-    // float scaleFactor;
-
-    float2 focal;
-    float near;
-    float fov;
-
-    float tan_fovx;
-    float tan_fovy;
 };
-
-
 struct PayloadRadiance
 {
     float3 result;
@@ -287,4 +276,3 @@ struct DepthGaussian {
 
 
 } // end namespace whitted
-

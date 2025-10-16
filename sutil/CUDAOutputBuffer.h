@@ -73,6 +73,7 @@ public:
     // Get output buffer
     GLuint         getPBO();
     void           deletePBO();
+    cudaGraphicsResource* getCUDAgfxResource() { return m_cuda_gfx_resource; } // Adicionar este método
     PIXEL_FORMAT*  getHostPointer();
 
 private:

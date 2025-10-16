@@ -64,6 +64,7 @@ extern "C" __global__ void __raygen__pinhole_camera()
                 reinterpret_cast<unsigned int&>( prd.depth ) );
 
     float4 acc_val = params.accum_buffer[image_index];
+    prd.result = make_float3(1,0,0); // DEBUG: pinta de vermelho o que está sendo renderizado
     if( params.subframe_index > 0 )
     {
         acc_val = lerp( acc_val, make_float4( prd.result, 0.f ), 1.0f / static_cast<float>( params.subframe_index + 1 ) );
@@ -72,6 +73,11 @@ extern "C" __global__ void __raygen__pinhole_camera()
     {
         acc_val = make_float4( prd.result, 0.f );
     }
-    params.frame_buffer[image_index] = make_color( acc_val );
+    // --- INÍCIO DA CORREÇÃO ---
+    // Escreve no surface object usando as coordenadas do pixel, em vez de um índice linear.
+    const unsigned int x = idx.x;
+    const unsigned int y = idx.y;
+    params.frame_buffer_ptr[image_index] = make_color( acc_val );
+    // --- FIM DA CORREÇÃO ---
     params.accum_buffer[image_index] = acc_val;
 }

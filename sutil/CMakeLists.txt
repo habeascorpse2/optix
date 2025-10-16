@@ -33,7 +33,7 @@ set(sources
     ${SAMPLES_CUDA_DIR}/shading.cu
     ${SAMPLES_CUDA_DIR}/sphere.cu
     ${SAMPLES_CUDA_DIR}/whitted.cu
-    ${SAMPLES_CUDA_DIR}/whitted3.cu
+    # ${SAMPLES_CUDA_DIR}/whitted3.cu
     ${SAMPLES_CUDA_DIR}/BufferView.h
     ${SAMPLES_CUDA_DIR}/GeometryData.h
     ${SAMPLES_CUDA_DIR}/Light.h

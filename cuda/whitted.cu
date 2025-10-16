@@ -133,48 +133,11 @@ extern "C" __global__ void __raygen__pinhole()
         const float3 accum_color_prev = make_float3( whitted::params.accum_buffer[image_index] );
         accum_color                   = lerp( accum_color_prev, accum_color, a );
     }
+    // accum_color = make_float3(0,0,1);
     whitted::params.accum_buffer[image_index] = make_float4( accum_color, 1.0f );
-    whitted::params.frame_buffer[image_index] = make_color( accum_color );
+
+    whitted::params.frame_buffer_ptr[image_index] = make_color(accum_color);
 }
-
-
-// extern "C" __global__ void __intersection__() {
-//     // Obtém o índice da primitiva (AABB atual)
-//     const uint32_t primitive_idx = optixGetPrimitiveIndex();
-
-//     // Buffer de AABBs passado via parâmetros do pipeline
-//     const OptixAabb* aabb_buffer = reinterpret_cast<const OptixAabb*>(whitted::params.aabb_buffer); 
-
-//     // Recupera o AABB do buffer
-//     const OptixAabb aabb = aabb_buffer[primitive_idx];
-
-//     // 2. Parâmetros do raio
-//     float3 ray_orig = optixGetWorldRayOrigin();
-//     float3 ray_dir = optixGetWorldRayDirection();
-//     float ray_tmin = optixGetRayTmin();
-//     float ray_tmax = optixGetRayTmax();
-
-//     // 3. Cálculo da interseção (método slabs - igual ao seu código)
-//     float3 inv_dir = 1.0f / ray_dir;
-
-//     float3 t0 = (make_float3(aabb.minX, aabb.minY, aabb.minZ) - ray_orig) * inv_dir;
-//     float3 t1 = (make_float3(aabb.maxX, aabb.maxY, aabb.maxZ) - ray_orig) * inv_dir;
-
-//     float3 tmin = fminf(t0, t1);
-//     float3 tmax = fmaxf(t0, t1);
-
-//     float t_entry = fmaxf(ray_tmin, fmaxf(tmin.x, fmaxf(tmin.y, tmin.z)));
-//     float t_exit = fminf(ray_tmax, fminf(tmax.x, fminf(tmax.y, tmax.z)));
-
-//     // 4. Reportar interseção se válida
-//     if (t_entry < t_exit) {
-//         optixReportIntersection(
-//             t_entry,   // t hit
-//             0,         // hit kind (não usado)
-//             primitive_idx // atributo primitivo (opcional)
-//         );
-//     }
-// }
 
 extern "C" __global__ void __intersection__()
 {
@@ -459,17 +422,16 @@ extern "C" __global__ void __closesthit__radiance()
         roughNormal.x -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
         roughNormal.y -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
         roughNormal.z -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
-        glm::mat4 modelMatrix = glm::inverse(whitted::params.modelMatrix);
-        glm::mat4 projMatrix = whitted::params.projMatrix;
+        sutil::Matrix4x4 modelMatrix(whitted::params.modelMatrix);
+        modelMatrix.inverse(); // Inverte a matriz para uso
 
         uint64_t payload_ptr = (uint64_t)(optixGetPayload_5()) | ((uint64_t)(optixGetPayload_6()) << 32);
         whitted::PayloadRadiance* payload = reinterpret_cast<whitted::PayloadRadiance*>(payload_ptr);
 
         
-        glm::vec3 R = glm::normalize(f2c(reflect(ray_dir,roughNormal)));
-        glm::vec3 Rn = glm::vec3(modelMatrix * glm::vec4(R, 0));
-        glm::vec3 Pn = f2c(P);
-        Pn = glm::vec3(modelMatrix * glm::vec4(Pn, 1));
+        float3 R = normalize(reflect(ray_dir, roughNormal));
+        float3 Rn = make_float3(modelMatrix * make_float4(R, 0.f));
+        float3 Pn = make_float3(modelMatrix * make_float4(P, 1.f));
 
         //
         //  Traça o raio para as Gaussianas
@@ -477,8 +439,8 @@ extern "C" __global__ void __closesthit__radiance()
         if (whitted::params.mode == 0) {
 
             //Traça o raio de reflexão de Gaussiana
-            float3 origin = c2f(Pn);
-            float3 direction = c2f(Rn);
+            float3 origin = Pn;
+            float3 direction = Rn;
 
             // --- INÍCIO DA CORREÇÃO ---
             // Crie um novo payload para o raio secundário para evitar corromper o estado do primário.
@@ -516,8 +478,8 @@ extern "C" __global__ void __closesthit__radiance()
         }
         else if( whitted::params.mode == 2 || whitted::params.mode == 3) { //Octree Mode
             // Converter o vetor de reflexão para coordenadas UV
-            float3 origin = c2f(Pn);
-            float3 direction = c2f(Rn);
+            float3 origin = Pn;
+            float3 direction = Rn;
             float u = 0.5f + atan2f(direction.z, direction.x) / (2.0f * M_PIf);
             float v = 0.5f - asinf(direction.y) / M_PIf;
 

@@ -371,6 +371,7 @@ if( NOT SAMPLES_INPUT_ENABLE_OPTIXIR_SUPPORT AND SAMPLES_INPUT_GENERATE_OPTIXIR 
 endif()
 
 
+
 ##################################################################
 # SUtil compilation
 
