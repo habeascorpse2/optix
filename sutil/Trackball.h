@@ -95,6 +95,12 @@ public:
     SUTILAPI void rollLeft(float speed);
     SUTILAPI void rollRight(float speed);
 
+    // Define a direção da câmera diretamente, útil para VR
+    SUTILAPI void setDirection(const float3& dir);
+
+    // Define a direção de movimento para o modo VR
+    SUTILAPI void setVRMoveDirection(const float3& forward);
+
 private:
     void updateCamera();
 
@@ -121,6 +127,9 @@ private:
     float3       m_v                        = { 0.0f, 0.0f, 0.0f };
     float3       m_w                        = { 0.0f, 0.0f, 0.0f };
 
+    // --- INÍCIO DA CORREÇÃO DE LOCOMOÇÃO VR ---
+    float3       m_vr_forward_direction     = { 0.0f, 0.0f, 0.0f };
+    // --- FIM DA CORREÇÃO DE LOCOMOÇÃO VR ---
 
 };
 

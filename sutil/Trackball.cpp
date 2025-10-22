@@ -138,39 +138,59 @@ void Trackball::reinitOrientationFromCamera()
 
 void Trackball::moveForward(float speed)
 {
-    float3 dirWS = normalize(m_camera->lookat() - m_camera->eye());
+    float3 dirWS = (m_vr_forward_direction.x != 0.0f || m_vr_forward_direction.y != 0.0f || m_vr_forward_direction.z != 0.0f)
+                       ? m_vr_forward_direction
+                       : normalize(m_camera->lookat() - m_camera->eye());
+
     m_camera->setEye(m_camera->eye() + dirWS * speed);
     m_camera->setLookat(m_camera->lookat() + dirWS * speed);
 }
 void Trackball::moveBackward(float speed)
 {
-    float3 dirWS = normalize(m_camera->lookat() - m_camera->eye());
+    float3 dirWS = (m_vr_forward_direction.x != 0.0f || m_vr_forward_direction.y != 0.0f || m_vr_forward_direction.z != 0.0f)
+                       ? m_vr_forward_direction
+                       : normalize(m_camera->lookat() - m_camera->eye());
+
     m_camera->setEye(m_camera->eye() - dirWS * speed);
     m_camera->setLookat(m_camera->lookat() - dirWS * speed);
 }
 void Trackball::moveLeft(float speed)
 {
-    float3 u, v, w;
-    m_camera->UVWFrame(u, v, w);
-    u = normalize(u);
+    float3 dirWS = (m_vr_forward_direction.x != 0.0f || m_vr_forward_direction.y != 0.0f || m_vr_forward_direction.z != 0.0f)
+                       ? m_vr_forward_direction
+                       : normalize(m_camera->lookat() - m_camera->eye());
 
-    m_camera->setEye(m_camera->eye() - u * speed);
-    m_camera->setLookat(m_camera->lookat() - u * speed);
+    // O vetor 'up' do mundo é (0,1,0). O vetor 'right' é o produto vetorial de 'forward' e 'up'.
+    float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
+    float3 rightWS = normalize(cross(dirWS, world_up));
+
+    m_camera->setEye(m_camera->eye() - rightWS * speed);
+    m_camera->setLookat(m_camera->lookat() - rightWS * speed);
 }
 void Trackball::moveRight(float speed)
 {
-    float3 u, v, w;
-    m_camera->UVWFrame(u, v, w);
-    u = normalize(u);
+    float3 dirWS = (m_vr_forward_direction.x != 0.0f || m_vr_forward_direction.y != 0.0f || m_vr_forward_direction.z != 0.0f)
+                       ? m_vr_forward_direction
+                       : normalize(m_camera->lookat() - m_camera->eye());
 
-    m_camera->setEye(m_camera->eye() + u * speed);
-    m_camera->setLookat(m_camera->lookat() + u * speed);
+    // O vetor 'up' do mundo é (0,1,0). O vetor 'right' é o produto vetorial de 'forward' e 'up'.
+    float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
+    float3 rightWS = normalize(cross(dirWS, world_up));
+
+    m_camera->setEye(m_camera->eye() + rightWS * speed);
+    m_camera->setLookat(m_camera->lookat() + rightWS * speed);
 }
 void Trackball::moveUp(float speed)
 {
     float3 u, v, w;
     m_camera->UVWFrame(u, v, w);
     v = normalize(v);
+
+    // Em VR, o movimento para cima/baixo deve ser global, não relativo à inclinação da cabeça
+    if (m_vr_forward_direction.x != 0.0f || m_vr_forward_direction.y != 0.0f || m_vr_forward_direction.z != 0.0f)
+    {
+        v = make_float3(0.0f, 1.0f, 0.0f);
+    }
 
     m_camera->setEye(m_camera->eye() + v * speed);
     m_camera->setLookat(m_camera->lookat() + v * speed);
@@ -180,6 +200,12 @@ void Trackball::moveDown(float speed)
     float3 u, v, w;
     m_camera->UVWFrame(u, v, w);
     v = normalize(v);
+
+    // Em VR, o movimento para cima/baixo deve ser global, não relativo à inclinação da cabeça
+    if (m_vr_forward_direction.x != 0.0f || m_vr_forward_direction.y != 0.0f || m_vr_forward_direction.z != 0.0f)
+    {
+        v = make_float3(0.0f, 1.0f, 0.0f);
+    }
 
     m_camera->setEye(m_camera->eye() - v * speed);
     m_camera->setLookat(m_camera->lookat() - v * speed);
@@ -245,5 +271,26 @@ bool Trackball::handleKeyEvent(unsigned char key)
     
     return false;
 }
+
+// Define a direção da câmera diretamente a partir de um vetor.
+// Útil para alinhar a câmera com a orientação do headset VR.
+void Trackball::setDirection(const float3& dir)
+{
+    if (!m_camera) return;
+
+    // A direção da câmera é do olho para o lookat.
+    float3 new_lookat = m_camera->eye() + dir * m_cameraEyeLookatDistance;
+    m_camera->setLookat(new_lookat);
+    reinitOrientationFromCamera();
+}
+
+// --- INÍCIO DA CORREÇÃO DE LOCOMOÇÃO VR ---
+void Trackball::setVRMoveDirection(const float3& forward)
+{
+    // Apenas armazena a direção para uso nos métodos de movimento.
+    // Normaliza e ignora a componente Y para movimento no plano.
+    m_vr_forward_direction = normalize(make_float3(forward.x, 0.0f, forward.z));
+}
+// --- FIM DA CORREÇÃO DE LOCOMOÇÃO VR ---
 
 } // namespace sutil
