@@ -1213,8 +1213,8 @@ int main( int argc, char* argv[] )
                     const XrPosef& pose = views[i].pose;
                     const glm::quat xr_orientation(
                         pose.orientation.w, 
-                        pose.orientation.x,  // Mantém X
-                        pose.orientation.y,  // Mantém Y
+                        -pose.orientation.x,  // Mantém X (roll)
+                        pose.orientation.y, // Inverte Y para corrigir pitch (cima/baixo)
                         -pose.orientation.z  // Inverte Z para corrigir o sentido de rotação
                     );
 
@@ -1232,7 +1232,7 @@ int main( int argc, char* argv[] )
                     // 4. Aplica rotação do headset aos vetores da base
                     glm::vec3 rotated_right = xr_orientation * base_right;
                     glm::vec3 rotated_up = xr_orientation * base_up;
-                    glm::vec3 rotated_forward = xr_orientation * base_forward;
+                    glm::vec3 rotated_forward = xr_orientation * base_forward; // Corrigido para usar base_forward
                     
                     // 5. Converte de volta para float3 e normaliza
                     float3 final_right = normalize(make_float3(rotated_right.x, rotated_right.y, rotated_right.z));
