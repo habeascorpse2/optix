@@ -189,6 +189,8 @@ struct LaunchParams
     // Membros de 16 bytes (128 bits)
     sutil::Matrix4x4 projMatrix;
     sutil::Matrix4x4 modelMatrix;
+    sutil::Matrix4x4 gltfModelMatrix;
+    sutil::Matrix4x4 gltfModelMatrixInverse;
     sutil::Matrix4x4 viewMatrix;
 
     // Membros de 8 bytes (64 bits) - Ponteiros e Handles
@@ -226,11 +228,12 @@ struct LaunchParams
     unsigned int             subframe_index;
     int                      max_depth;
     float                    scene_epsilon;
-    int gcount;
+    // int gcount;
     int mode;
     float roughness;
     float                    near;
     float                    fov;
+    bool                     is_vr;
 
 };
 struct PayloadRadiance

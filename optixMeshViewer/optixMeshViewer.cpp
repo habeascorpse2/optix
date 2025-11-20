@@ -286,31 +286,33 @@ void snapshotImage(sutil::CUDAOutputBuffer<uchar4>& output_buffer ) {
 // Adicione esta função antes do loop principal
 void handleKeyboardInput(GLFWwindow* window, bool is_vr_mode)
 {
-    float currentSpeed = trackball.moveSpeed();
+    float currentSpeed = trackball.moveSpeed(); // A velocidade já é ajustada no trackball
     
     // Lógica original para modo desktop
     if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-        trackball.moveForward(currentSpeed);
+        trackball.moveForward(currentSpeed, true);
         camera_changed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        trackball.moveBackward(currentSpeed);
+        trackball.moveBackward(currentSpeed, true);
         camera_changed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-        trackball.moveLeft(currentSpeed);
+        trackball.moveLeft(currentSpeed, true);
         camera_changed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-        trackball.moveRight(currentSpeed);
+        trackball.moveRight(currentSpeed, true);
         camera_changed = true;
     }
     // Adiciona movimento vertical com Q e E
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
-        trackball.moveUp(currentSpeed);
+        trackball.moveUp(currentSpeed, true);
+        camera_changed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
-        trackball.moveDown(currentSpeed);
+        trackball.moveDown(currentSpeed, true);
+        camera_changed = true;
     }
 }
 
@@ -530,8 +532,21 @@ void handleCameraUpdate( whitted::LaunchParams& params )
 {
     if( !camera_changed )
         return;
-    camera_changed = false;
 
+    // --- INÍCIO DA LÓGICA DE MOVIMENTO DO OBJETO ---
+    // Calcula a matriz do objeto para que ele fique sempre na frente da câmera.
+    // Esta matriz é passada para os shaders via 'params'.
+    const float3 object_offset = make_float3(0.0f, -0.2f, -0.8f); // 20cm para baixo, 80cm à frente
+
+    // Calcula a posição final do objeto no espaço do mundo.
+    const float3 object_position = camera.eye()
+                                 + object_offset.z * (-camera.direction()); // Move para frente/trás na direção da câmera
+
+    sutil::Matrix4x4 model_matrix = sutil::Matrix4x4::translate(object_position);
+    params.gltfModelMatrix = model_matrix;
+    params.gltfModelMatrixInverse = model_matrix.inverse();
+    // --- FIM DA LÓGICA DE MOVIMENTO DO OBJETO ---
+    
     camera.setAspectRatio( static_cast<float>( width ) / static_cast<float>( height ) );
     if (keepY) {
         float3 newEye = camera.eye();
@@ -542,6 +557,8 @@ void handleCameraUpdate( whitted::LaunchParams& params )
     params.eye = camera.eye();
     camera.UVWFrame( params.U, params.V, params.W );
     updateModel();
+    
+    camera_changed = false;
 
 }
 
@@ -771,14 +788,14 @@ int main( int argc, char* argv[] )
     std::string gaussianFile2;
     std::string envFile;
     
-    // --- INÍCIO DAS ADIÇÕES PARA VR ---
     bool use_vr = false;
-    // --- FIM DAS ADIÇÕES PARA VR ---
 
     envFile = "shperical_map.jpg";
+    gaussianFile1 = "quarto3_100.ply";
+    gaussianFile2 = "quarto3_10.ply";
     
 
-    // output_buffer_type = sutil::CUDAOutputBufferType::CUDA_DEVICE;
+    output_buffer_type = sutil::CUDAOutputBufferType::CUDA_DEVICE;
     for( int i = 1; i < argc; ++i )
     {
         const std::string arg = argv[i];
@@ -846,8 +863,9 @@ int main( int argc, char* argv[] )
 
     if( infile.empty() )
     {
+        infile = "quarto2.glb";
         std::cerr << "--model argument required" << std::endl;
-        printUsageAndExit( argv[0] );
+        // printUsageAndExit( argv[0] );
     }
 
 
@@ -857,6 +875,7 @@ int main( int argc, char* argv[] )
         std::cout << "Iniciando em modo OpenXR VR..." << std::endl;
         VRState vrState = {};
         GLFWwindow* window = nullptr;
+        params.is_vr = true;
 
         try
         {
@@ -891,6 +910,7 @@ int main( int argc, char* argv[] )
             initLaunchParams( gscene, scene );
             params.reflection_texture = reflection_texture;
             g_position = glm::vec3(0, 0, 0);
+            params.gltfModelMatrix.identity();
             g_rotation = glm::vec3(0, 0, 0);
             g_scale = glm::vec3(1.f, 1.f, 1.f);
             params.mode = 0;
@@ -1374,6 +1394,7 @@ int main( int argc, char* argv[] )
     {
         try
         {
+            params.is_vr = false;
             // --- INÍCIO DA CORREÇÃO: Lógica de inicialização para modo desktop ---
             // Carrega os dados da cena antes de criar a janela e o contexto GL.
             Gaussian gaussian((uint) width,(uint) height, sutil::sampleDataFilePath(gaussianFile1.c_str()), 3, false, 0);

@@ -86,12 +86,12 @@ public:
     SUTILAPI bool handleKeyEvent(unsigned char key);
 
     // Make movement methods public so they can be called from outside
-    SUTILAPI void moveForward(float speed);
-    SUTILAPI void moveBackward(float speed);
-    SUTILAPI void moveLeft(float speed);
-    SUTILAPI void moveRight(float speed);
-    SUTILAPI void moveUp(float speed);
-    SUTILAPI void moveDown(float speed);
+    SUTILAPI float3 moveForward(float speed, bool move_cam = true);
+    SUTILAPI float3 moveBackward(float speed, bool move_cam = true);
+    SUTILAPI float3 moveLeft(float speed, bool move_cam = true);
+    SUTILAPI float3 moveRight(float speed, bool move_cam = true);
+    SUTILAPI float3 moveUp(float speed, bool move_cam = true);
+    SUTILAPI float3 moveDown(float speed, bool move_cam = true);
     SUTILAPI void rollLeft(float speed);
     SUTILAPI void rollRight(float speed);
 
