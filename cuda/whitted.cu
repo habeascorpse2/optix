@@ -69,17 +69,8 @@ extern "C" __global__ void __raygen__pinhole()
             * make_float2( ( static_cast<float>( launch_idx.x ) + subpixel_jitter.x ) / static_cast<float>( launch_dims.x ),
                            ( static_cast<float>( launch_idx.y ) + subpixel_jitter.y ) / static_cast<float>( launch_dims.y ) )
         - 1.0f;
-
-    // --- INÍCIO DA SOLUÇÃO DE MOVIMENTO ---
-    // 1. Criar o raio primário no espaço do mundo real.
-    const float3 initial_ray_direction = normalize( d.x * U + d.y * V + W );
-    const float3 initial_ray_origin    = eye;
-
-    // 2. Transformar o raio pela INVERSA da matriz do objeto. Isso move o "mundo" em volta do raio,
-    // fazendo com que o objeto apareça na posição desejada.
-    const float3 ray_direction = make_float3(whitted::params.gltfModelMatrixInverse * make_float4(initial_ray_direction, 0.0f));
-    const float3 ray_origin    = make_float3(whitted::params.gltfModelMatrixInverse * make_float4(initial_ray_origin, 1.0f));
-    // --- FIM DA SOLUÇÃO DE MOVIMENTO ---
+    const float3 ray_direction = normalize( d.x * U + d.y * V + W );
+    const float3 ray_origin    = eye;
     float3 result = make_float3(0.f);
 
     
@@ -119,7 +110,7 @@ extern "C" __global__ void __raygen__pinhole()
 
         // payload.fov = true;
 
-        traceRadiance( whitted::params.handle, ray_direction, ray_origin, // Usa o raio transformado
+        traceRadiance( whitted::params.handle, ray_origin, ray_direction,
                     0.00f,  // tmin
                     1e16f,  // tmax
                     &payload );

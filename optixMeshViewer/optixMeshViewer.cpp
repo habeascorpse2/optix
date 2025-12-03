@@ -533,19 +533,15 @@ void handleCameraUpdate( whitted::LaunchParams& params )
     if( !camera_changed )
         return;
 
-    // --- INÍCIO DA LÓGICA DE MOVIMENTO DO OBJETO ---
-    // Calcula a matriz do objeto para que ele fique sempre na frente da câmera.
-    // Esta matriz é passada para os shaders via 'params'.
-    const float3 object_offset = make_float3(0.0f, -0.2f, -0.8f); // 20cm para baixo, 80cm à frente
-
-    // Calcula a posição final do objeto no espaço do mundo.
-    const float3 object_position = camera.eye()
-                                 + object_offset.z * (-camera.direction()); // Move para frente/trás na direção da câmera
-
-    sutil::Matrix4x4 model_matrix = sutil::Matrix4x4::translate(object_position);
-    params.gltfModelMatrix = model_matrix;
-    params.gltfModelMatrixInverse = model_matrix.inverse();
-    // --- FIM DA LÓGICA DE MOVIMENTO DO OBJETO ---
+    // Se o movimento foi pelo mouse, reseta a matriz do objeto.
+    if (mouse_button != -1) {
+        params.gltfModelMatrix.identity();
+    } else { // Se o movimento foi pelo teclado, atualiza a matriz do objeto.
+        float3 eye_prev = make_float3(params.eye.x, params.eye.y, params.eye.z);
+        float3 eye_curr = camera.eye();
+        float3 move_vec = eye_curr - eye_prev;
+        params.gltfModelMatrix = sutil::Matrix4x4::translate(move_vec) * params.gltfModelMatrix;
+    }
     
     camera.setAspectRatio( static_cast<float>( width ) / static_cast<float>( height ) );
     if (keepY) {

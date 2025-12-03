@@ -190,7 +190,6 @@ struct LaunchParams
     sutil::Matrix4x4 projMatrix;
     sutil::Matrix4x4 modelMatrix;
     sutil::Matrix4x4 gltfModelMatrix;
-    sutil::Matrix4x4 gltfModelMatrixInverse;
     sutil::Matrix4x4 viewMatrix;
 
     // Membros de 8 bytes (64 bits) - Ponteiros e Handles
