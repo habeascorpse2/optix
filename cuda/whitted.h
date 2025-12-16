@@ -186,12 +186,9 @@ struct LaunchParams
     // --- INÍCIO DA CORREÇÃO DE ALINHAMENTO ---
     // Agrupar membros por tamanho (maior para o menor) para garantir layout consistente.
 
-    // Membros de 16 bytes (128 bits)
-    sutil::Matrix4x4 projMatrix;
     sutil::Matrix4x4 modelMatrix;
-    sutil::Matrix4x4 gltfModelMatrix;
-    sutil::Matrix4x4 viewMatrix;
-
+    // sutil::Matrix4x4 gltfModelMatrix;
+    
     // Membros de 8 bytes (64 bits) - Ponteiros e Handles
     float4*                  accum_buffer;
     uchar4*                  frame_buffer_ptr;

@@ -126,13 +126,19 @@ struct VRState
     XrInstance instance = XR_NULL_HANDLE;
     XrSystemId systemId = XR_NULL_SYSTEM_ID;
     XrSession  session  = XR_NULL_HANDLE;
-    // Mais handles serão adicionados aqui depois (space, swapchains, etc.)
-};
-// --- FIM DAS ADIÇÕES PARA VR ---
 
-// --- INÍCIO DA CORREÇÃO DE LOCOMOÇÃO VR ---
-glm::quat g_headset_orientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); // Orientação do headset
-// --- FIM DA CORREÇÃO DE LOCOMOÇÃO VR ---
+    // --- Adições para Passthrough ---
+    PFN_xrCreatePassthroughFB xrCreatePassthroughFB = nullptr;
+    PFN_xrDestroyPassthroughFB xrDestroyPassthroughFB = nullptr;
+    PFN_xrPassthroughStartFB xrPassthroughStartFB = nullptr;
+    PFN_xrPassthroughPauseFB xrPassthroughPauseFB = nullptr;
+    PFN_xrCreatePassthroughLayerFB xrCreatePassthroughLayerFB = nullptr;
+    PFN_xrDestroyPassthroughLayerFB xrDestroyPassthroughLayerFB = nullptr;
+
+    XrPassthroughFB passthroughFeature = XR_NULL_HANDLE;
+    // O XrPassthroughLayerFB será criado no loop de renderização.
+};
+
 
 #include "gaussian.hpp"
 #include "OctreeGaussian.hpp"
@@ -169,6 +175,15 @@ glm::vec3 g_rotation;
 glm::vec3 g_scale;
 glm::mat4 proj;
 glm::mat4 model;
+
+
+glm::quat g_headset_orientation;
+float nav_scale = 1.f;   
+float3 initial_headset_pos = make_float3(0.f, 0.f, 0.f); // Posição inicial do headset
+bool initial_pos_captured = false; // Flag para capturar a posição apenas uma vez
+
+
+float3 nav_offset = make_float3(0.f, 0.f, 0.f);
 
 float near = 0.1;
 float far = 1000.f;
@@ -286,33 +301,58 @@ void snapshotImage(sutil::CUDAOutputBuffer<uchar4>& output_buffer ) {
 // Adicione esta função antes do loop principal
 void handleKeyboardInput(GLFWwindow* window, bool is_vr_mode)
 {
-    float currentSpeed = trackball.moveSpeed(); // A velocidade já é ajustada no trackball
-    
-    // Lógica original para modo desktop
-    if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-        trackball.moveForward(currentSpeed, true);
-        camera_changed = true;
-    }
-    if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        trackball.moveBackward(currentSpeed, true);
-        camera_changed = true;
-    }
-    if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-        trackball.moveLeft(currentSpeed, true);
-        camera_changed = true;
-    }
-    if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-        trackball.moveRight(currentSpeed, true);
-        camera_changed = true;
-    }
-    // Adiciona movimento vertical com Q e E
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
-        trackball.moveUp(currentSpeed, true);
-        camera_changed = true;
-    }
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
-        trackball.moveDown(currentSpeed, true);
-        camera_changed = true;
+    const float move_speed = 0.05f;  // A velocidade já é ajustada no trackball
+    if (is_vr_mode) {
+        // Lógica de locomoção para o modo VR
+        // Calcula a direção do movimento no plano horizontal (XZ)
+        glm::vec3 forward = g_headset_orientation * glm::vec3(0.0f, 0.0f, -1.0f);
+        forward.y = 0; // Projeta no plano horizontal
+        forward = glm::normalize(forward);
+
+        glm::vec3 right = g_headset_orientation * glm::vec3(1.0f, 0.0f, 0.0f);
+        right.y = 0; // Projeta no plano horizontal
+        right = glm::normalize(right);
+
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            nav_offset += move_speed * make_float3(forward.x, forward.y, forward.z);
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            nav_offset -= move_speed * make_float3(forward.x, forward.y, forward.z);
+        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            nav_offset -= move_speed * make_float3(right.x, right.y, right.z);
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            nav_offset += move_speed * make_float3(right.x, right.y, right.z);
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+            nav_offset.y += move_speed; // Movimento vertical para cima
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+            nav_offset.y -= move_speed; // Movimento vertical para baixo
+
+    } else {
+        // Lógica original para modo desktop
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            trackball.moveForward(move_speed, true);
+            camera_changed = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            trackball.moveBackward(move_speed, true);
+            camera_changed = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            trackball.moveLeft(move_speed, true);
+            camera_changed = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            trackball.moveRight(move_speed, true);
+            camera_changed = true;
+        }
+        // Adiciona movimento vertical com Q e E
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+            trackball.moveUp(move_speed, true);
+            camera_changed = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+            trackball.moveDown(move_speed, true);
+            camera_changed = true;
+        }
     }
 }
 
@@ -506,8 +546,10 @@ void initLaunchParams( const sutil::GaussianScene& gscene, const sutil::Scene& s
                 lights.size() * sizeof( Light ),
                 cudaMemcpyHostToDevice
                 ) );
-
-    params.miss_color   = make_float3( 0.5f );
+    
+    // Se estiver em modo VR com ALVR, usamos verde-limão para chroma key.
+    // Caso contrário, usamos a cor de fundo normal.
+    params.miss_color   = make_float3( 0.0f, 1.0f, 0.0f );
 
     //CUDA_CHECK( cudaStreamCreate( &stream ) );
     CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_params ), sizeof( whitted::LaunchParams ) ) );
@@ -535,12 +577,12 @@ void handleCameraUpdate( whitted::LaunchParams& params )
 
     // Se o movimento foi pelo mouse, reseta a matriz do objeto.
     if (mouse_button != -1) {
-        params.gltfModelMatrix.identity();
+        // params.gltfModelMatrix.identity();
     } else { // Se o movimento foi pelo teclado, atualiza a matriz do objeto.
         float3 eye_prev = make_float3(params.eye.x, params.eye.y, params.eye.z);
         float3 eye_curr = camera.eye();
         float3 move_vec = eye_curr - eye_prev;
-        params.gltfModelMatrix = sutil::Matrix4x4::translate(move_vec) * params.gltfModelMatrix;
+        // params.gltfModelMatrix = sutil::Matrix4x4::translate(move_vec) * params.gltfModelMatrix;
     }
     
     camera.setAspectRatio( static_cast<float>( width ) / static_cast<float>( height ) );
@@ -667,7 +709,7 @@ void updateProjectionMatrix() {
     
     auto pm = glm::perspectiveFov(fovy,(float) whitted::WIDTH,(float) whitted::HEIGHT, near, far);
 
-    params.projMatrix = sutil::Matrix4x4(glm::value_ptr(pm)).transpose();
+    // params.projMatrix = sutil::Matrix4x4(glm::value_ptr(pm)).transpose();
 
 
     params.fov = fov;
@@ -701,6 +743,10 @@ void printGui(double frameTime) {
     }
     if (ImGui::SliderFloat("Field of View", &fov, 1.f, 90.f)) {
         camera_changed = true;
+    }
+
+    if (ImGui::SliderFloat("HMD scale position", &nav_scale, 1.f, 100.f)) {
+        // camera_changed = true;
     }
 
     std::string eye = "Eye X:" + std::to_string(camera.eye().x) + " Y:"+ std::to_string(camera.eye().y) + " Z:" + std::to_string(camera.eye().z);
@@ -906,7 +952,7 @@ int main( int argc, char* argv[] )
             initLaunchParams( gscene, scene );
             params.reflection_texture = reflection_texture;
             g_position = glm::vec3(0, 0, 0);
-            params.gltfModelMatrix.identity();
+            // params.gltfModelMatrix.identity();
             g_rotation = glm::vec3(0, 0, 0);
             g_scale = glm::vec3(1.f, 1.f, 1.f);
             params.mode = 0;
@@ -921,8 +967,27 @@ int main( int argc, char* argv[] )
             params.g2_shs = gaussian2.shs_cuda;
             params.g2_cov3d9 = gaussian2.cov3d9_cuda;
             
-            // 2. Inicializar OpenXR - Criar a Instância
+            // 2. Inicializar OpenXR - Verificar e Criar a Instância
             std::vector<const char*> extensions = { XR_KHR_OPENGL_ENABLE_EXTENSION_NAME };
+
+            // --- INÍCIO PASSO 1: HABILITAR EXTENSÃO PASSTHROUGH ---
+            // Verificar se a extensão de Passthrough está disponível
+            uint32_t extCount = 0;
+            xrEnumerateInstanceExtensionProperties(nullptr, 0, &extCount, nullptr);
+            std::vector<XrExtensionProperties> extProps(extCount, {XR_TYPE_EXTENSION_PROPERTIES});
+            xrEnumerateInstanceExtensionProperties(nullptr, extCount, &extCount, extProps.data());
+
+            bool passthrough_supported = false;
+            for (const auto& prop : extProps) {
+                if (strcmp(prop.extensionName, XR_FB_PASSTHROUGH_EXTENSION_NAME) == 0) {
+                    passthrough_supported = true;
+                    extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+                    std::cout << "Extensao XR_FB_passthrough encontrada e habilitada." << std::endl;
+                    break;
+                }
+            }
+            // --- FIM PASSO 1 ---
+
             XrInstanceCreateInfo instanceCreateInfo = {};
             instanceCreateInfo.type = XR_TYPE_INSTANCE_CREATE_INFO;
             strcpy(instanceCreateInfo.applicationInfo.applicationName, "OptiX Mesh Viewer");
@@ -934,6 +999,20 @@ int main( int argc, char* argv[] )
             instanceCreateInfo.enabledExtensionNames = extensions.data();
 
             xr_check(xrCreateInstance(&instanceCreateInfo, &vrState.instance), "Falha ao criar instância OpenXR");
+
+            // --- INÍCIO PASSO 1: OBTER PONTEIROS DE FUNÇÃO ---
+            if (passthrough_supported) {
+                xr_check(xrGetInstanceProcAddr(vrState.instance, "xrCreatePassthroughFB", (PFN_xrVoidFunction*)(&vrState.xrCreatePassthroughFB)), "Falha ao obter xrCreatePassthroughFB");
+                xr_check(xrGetInstanceProcAddr(vrState.instance, "xrDestroyPassthroughFB", (PFN_xrVoidFunction*)(&vrState.xrDestroyPassthroughFB)), "Falha ao obter xrDestroyPassthroughFB");
+                xr_check(xrGetInstanceProcAddr(vrState.instance, "xrPassthroughStartFB", (PFN_xrVoidFunction*)(&vrState.xrPassthroughStartFB)), "Falha ao obter xrPassthroughStartFB");
+                xr_check(xrGetInstanceProcAddr(vrState.instance, "xrPassthroughPauseFB", (PFN_xrVoidFunction*)(&vrState.xrPassthroughPauseFB)), "Falha ao obter xrPassthroughPauseFB");
+                xr_check(xrGetInstanceProcAddr(vrState.instance, "xrCreatePassthroughLayerFB", (PFN_xrVoidFunction*)(&vrState.xrCreatePassthroughLayerFB)), "Falha ao obter xrCreatePassthroughLayerFB");
+                xr_check(xrGetInstanceProcAddr(vrState.instance, "xrDestroyPassthroughLayerFB", (PFN_xrVoidFunction*)(&vrState.xrDestroyPassthroughLayerFB)), "Falha ao obter xrDestroyPassthroughLayerFB");
+                std::cout << "Funcoes da extensao Passthrough carregadas com sucesso." << std::endl;
+            } else {
+                std::cout << "AVISO: Extensao XR_FB_passthrough nao suportada pelo runtime." << std::endl;
+            }
+            // --- FIM PASSO 1 ---
 
             // 3. Obter o SystemId (o headset)
             XrSystemGetInfo systemGetInfo = {};
@@ -981,6 +1060,20 @@ int main( int argc, char* argv[] )
             xr_check(xrCreateSession(vrState.instance, &sessionCreateInfo, &vrState.session), "Falha ao criar sessão OpenXR");
 
             std::cout << "Sessão OpenXR criada com sucesso!" << std::endl;
+
+            // --- INÍCIO PASSO 1: CRIAR E INICIAR O PASSTHROUGH ---
+            if (passthrough_supported) {
+                XrPassthroughCreateInfoFB passthroughCreateInfo = {XR_TYPE_PASSTHROUGH_CREATE_INFO_FB};
+                // passthroughCreateInfo.flags pode ser usado para, por exemplo, solicitar um layer por cima de tudo
+                xr_check(vrState.xrCreatePassthroughFB(vrState.session, &passthroughCreateInfo, &vrState.passthroughFeature),
+                         "Falha ao criar o recurso de Passthrough (xrCreatePassthroughFB)");
+
+                xr_check(vrState.xrPassthroughStartFB(vrState.passthroughFeature),
+                         "Falha ao iniciar o Passthrough (xrPassthroughStartFB)");
+                
+                std::cout << "Recurso de Passthrough criado e iniciado." << std::endl;
+            }
+            // --- FIM PASSO 1 ---
 
 
             // --- STEP 5: Criar XrReferenceSpace ────────────────────────────────────────
@@ -1134,8 +1227,8 @@ int main( int argc, char* argv[] )
 
             std::chrono::duration<double> render_time(0.0);
 
-            initCameraState( scene );
-            trackball.setMoveSpeed( .1f );
+            camera_changed = true;
+          
 
             while (session_running && !glfwWindowShouldClose(window))
             {
@@ -1205,8 +1298,7 @@ int main( int argc, char* argv[] )
                             viewCount, &viewCountOutput, views.data()),
                          "Falha em xrLocateViews");
 
-                // 4. Para cada olho (view), obter a imagem do swapchain, renderizar e liberar
-    
+               
                 std::vector<XrCompositionLayerProjectionView> projectionViews(viewCount, {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW});
 
                 auto t0 = std::chrono::steady_clock::now();
@@ -1229,44 +1321,44 @@ int main( int argc, char* argv[] )
                     const XrPosef& pose = views[i].pose;
                     const glm::quat xr_orientation(
                         pose.orientation.w, 
-                        -pose.orientation.x,  // Mantém X (roll)
-                        pose.orientation.y, // Inverte Y para corrigir pitch (cima/baixo)
-                        -pose.orientation.z  // Inverte Z para corrigir o sentido de rotação
+                        pose.orientation.x,
+                        pose.orientation.y, 
+                        pose.orientation.z 
                     );
+                    g_headset_orientation = xr_orientation;
 
-                    g_headset_orientation = xr_orientation; // Salva para uso em outras partes
-                    
-                    // 2. Obter base da câmera de navegação
-                    float3 orig_u, orig_v, orig_w;
-                    camera.UVWFrame(orig_u, orig_v, orig_w);
-                    
-                    // 3. Converte vetores da base para glm
-                    glm::vec3 base_right(orig_u.x, orig_u.y, orig_u.z);
-                    glm::vec3 base_up(orig_v.x, orig_v.y, orig_v.z);
-                    glm::vec3 base_forward(orig_w.x, orig_w.y, orig_w.z);
-                    
-                    // 4. Aplica rotação do headset aos vetores da base
-                    glm::vec3 rotated_right = xr_orientation * base_right;
-                    glm::vec3 rotated_up = xr_orientation * base_up;
-                    glm::vec3 rotated_forward = xr_orientation * base_forward; // Corrigido para usar base_forward
-                    
-                    // 5. Converte de volta para float3 e normaliza
-                    float3 final_right = normalize(make_float3(rotated_right.x, rotated_right.y, rotated_right.z));
-                    float3 final_up = normalize(make_float3(rotated_up.x, rotated_up.y, rotated_up.z));
-                    float3 final_forward = normalize(make_float3(rotated_forward.x, rotated_forward.y, rotated_forward.z));
-                    
-                    // 6. Atualiza os vetores da câmera mantendo as magnitudes originais
-                    params.U = length(orig_u) * final_right;
-                    params.V = length(orig_v) * final_up;
-                    params.W = length(orig_w) * final_forward;
+                    // --- INÍCIO DA CORREÇÃO DE ESCALA DE MOVIMENTO ---
+                    const float3 current_headset_pos = make_float3(pose.position.x, pose.position.y, pose.position.z);
 
-                    trackball.setVRMoveDirection(final_forward);
+                    // 1. Captura a posição inicial do headset no primeiro quadro válido.
+                    if (!initial_pos_captured && (viewState.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT)) {
+                        initial_headset_pos = current_headset_pos;
+                        initial_pos_captured = true;
+                    }
+
+                    // 2. Calcula o deslocamento físico a partir da posição inicial.
+                    const float3 physical_displacement = current_headset_pos - initial_headset_pos;
+
+                    // 3. A posição final do olho é a soma da navegação (teclado) com a posição inicial
+                    //    e o deslocamento físico escalado.
+                    params.eye = nav_offset + initial_headset_pos + (physical_displacement * nav_scale);
+                    // --- FIM DA CORREÇÃO DE ESCALA DE MOVIMENTO ---
+
+                    const float w_len = 2.0f;
+                    // Calculamos v_len com base no FOV vertical (em graus) definido na GUI.
+                    const float v_len = w_len * tanf(glm::radians(fov) * 0.5f);
+                    // Calculamos u_len com base em v_len e na proporção da tela do headset.
+                    const float aspect_ratio = static_cast<float>(vr_width) / static_cast<float>(vr_height);
+                    const float u_len = v_len * aspect_ratio;
                     
-                    // Calcula posição final do olho: deslocamento fornecido pelo XR rotacionado e somado à posição de navegação
-                    const float3 eye_position = make_float3(pose.position.x, pose.position.y, pose.position.z);
-                    glm::vec3 eye_offset = xr_orientation * glm::vec3(eye_position.x, eye_position.y, eye_position.z);
-                    params.eye = camera.eye() + make_float3(eye_offset.x, eye_offset.y, eye_offset.z);
-                    
+                    glm::vec3 u_vec = u_len * (xr_orientation * glm::vec3(1.0f, 0.0f, 0.0f));
+                    glm::vec3 v_vec = v_len * (xr_orientation * glm::vec3(0.0f, 1.0f, 0.0f));
+                    glm::vec3 w_vec = w_len * (xr_orientation * glm::vec3(0.0f, 0.0f, -1.0f));
+                    params.U = make_float3(u_vec.x, u_vec.y, u_vec.z);
+                    params.V = make_float3(v_vec.x, v_vec.y, v_vec.z);
+                    params.W = make_float3(w_vec.x, w_vec.y, w_vec.z);
+                    // --- FIM DA CORREÇÃO ---
+
                     if(camera_changed) params.subframe_index = 0;
 
                     // 2. Mapear o PBO para obter um CUdeviceptr
@@ -1349,7 +1441,10 @@ int main( int argc, char* argv[] )
                 // 6. Finalizar o frame
                 XrFrameEndInfo frameEndInfo = { XR_TYPE_FRAME_END_INFO };
                 frameEndInfo.displayTime = frameState.predictedDisplayTime;
-                frameEndInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+                // Para Chroma Key com ALVR, o ambiente é opaco do ponto de vista da aplicação.
+                // O ALVR no headset fará a mágica.
+                frameEndInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE; 
+
                 frameEndInfo.layerCount = 1;
                 const XrCompositionLayerBaseHeader* layers[] = { reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer) };
                 frameEndInfo.layers = layers;
@@ -1382,8 +1477,6 @@ int main( int argc, char* argv[] )
 
         // Limpeza normal
         std::cout << "Fechando a aplicação VR..." << std::endl;
-        if (vrState.session) xrDestroySession(vrState.session);
-        if (vrState.instance) xrDestroyInstance(vrState.instance);
         sutil::cleanupUI(window);
     }
     else // Modo Local (código original)

@@ -65,6 +65,13 @@ __forceinline__ __device__ uchar4 make_color( const float4& c )
     return make_color( make_float3( c.x, c.y, c.z ) );
 }
 
+__forceinline__ __device__ uchar4 make_color_alpha_one( const float3& c )
+{
+    // Converte para uchar4, mas força o canal alfa para 255 (opaco).
+    // Útil para o modo Chroma Key do VR.
+    return make_uchar4( c.x * 255.99f, c.y * 255.99f, c.z * 255.99f, 255 );
+}
+
 __forceinline__ __device__ float luminance( const float3& rgb )
 {
     const float3 ntsc_luminance = { 0.30f, 0.59f, 0.11f };

@@ -134,7 +134,9 @@ extern "C" __global__ void __raygen__pinhole()
         accum_color                   = lerp( accum_color_prev, accum_color, a );
     }
     if (whitted::params.is_vr == true)
-        whitted::params.frame_buffer_ptr[image_index] = make_color(accum_color);
+        // Para o modo VR com Chroma Key, garantimos que o alfa seja 1.0 (opaco).
+        // A cor RGB já será verde (do miss_color) ou a cor da cena.
+        whitted::params.frame_buffer_ptr[image_index] = make_color_alpha_one(accum_color);
     else {
         whitted::params.frame_buffer_ptr[image_index] = make_color(accum_color);
         whitted::params.accum_buffer[image_index] = make_float4( accum_color, 1.0f );
