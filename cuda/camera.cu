@@ -57,6 +57,7 @@ extern "C" __global__ void __raygen__pinhole_camera()
     whitted::PayloadRadiance prd;
     prd.importance = 1.f;
     prd.depth      = 0;
+    prd.result     = params.miss_color; // Inicializa com a cor de fundo caso o traçado falhe
 
     optixTrace( params.handle, ray_origin, ray_direction, params.scene_epsilon, 1e16f, 0.0f, OptixVisibilityMask( 1 ),
                 OPTIX_RAY_FLAG_NONE, whitted::RAY_TYPE_RADIANCE, whitted::RAY_TYPE_COUNT, whitted::RAY_TYPE_RADIANCE,
@@ -64,7 +65,7 @@ extern "C" __global__ void __raygen__pinhole_camera()
                 reinterpret_cast<unsigned int&>( prd.depth ) );
 
     float4 acc_val = params.accum_buffer[image_index];
-    prd.result = make_float3(1,0,0); // DEBUG: pinta de vermelho o que está sendo renderizado
+    // prd.result = make_float3(1,0,0); // REMOVIDO: Linha de debug que sobrescrevia a imagem
     if( params.subframe_index > 0 )
     {
         acc_val = lerp( acc_val, make_float4( prd.result, 0.f ), 1.0f / static_cast<float>( params.subframe_index + 1 ) );

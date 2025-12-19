@@ -58,73 +58,87 @@ extern "C" __global__ void __raygen__pinhole()
     //
     unsigned int seed = tea<4>( launch_idx.y * launch_dims.x + launch_idx.x, subframe_index );
 
-    // The center of each pixel is at fraction (0.5,0.5)
-    const float2 subpixel_jitter =
-        subframe_index == 0 ? make_float2( 0.5f, 0.5f ) :  make_float2( rnd( seed ), rnd( seed ) );
-    // const float2 subpixel_jitter = make_float2( 0.5f, 0.5f );
-
-    
-    const float2 d =
-        2.0f
-            * make_float2( ( static_cast<float>( launch_idx.x ) + subpixel_jitter.x ) / static_cast<float>( launch_dims.x ),
-                           ( static_cast<float>( launch_idx.y ) + subpixel_jitter.y ) / static_cast<float>( launch_dims.y ) )
-        - 1.0f;
-    const float3 ray_direction = normalize( d.x * U + d.y * V + W );
-    // float3 ray_direction = normalize(
-    //     quat_rotate(whitted::params.Q_head, d.x * U + d.y * V + W)
-    // );
-    const float3 ray_origin    = eye;
     float3 result = make_float3(0.f);
-    float alpha = 1.0f;
+    float alpha = 0.0f;
 
-    
+    const int samples_per_frame = 1;
 
-    if (whitted::params.mode != 1) {
-        whitted::PayloadRadiance payload;
-        payload.result     = make_float3( 0.0f );
-        payload.depth      = 0;
-        payload.seed = seed;
-        payload.htype = 0;
-        payload.alpha = 1.0f;
+    for (int i = 0; i < samples_per_frame; ++i) {
+        // The center of each pixel is at fraction (0.5,0.5)
+        float2 subpixel_jitter = make_float2( 0.5f, 0.5f );
+        if (samples_per_frame > 1 || subframe_index > 0)
+            subpixel_jitter = make_float2( rnd( seed ), rnd( seed ) );
 
-        float hy = launch_dims.y / 2;
-        float hx = launch_dims.x / 2;
-        float fov_a = hy * 0.5f;
-        float pointy = launch_idx.y - hy;
-        float pointx = launch_idx.x - hx;
+        const float2 d =
+            2.0f
+                * make_float2( ( static_cast<float>( launch_idx.x ) + subpixel_jitter.x ) / static_cast<float>( launch_dims.x ),
+                               ( static_cast<float>( launch_idx.y ) + subpixel_jitter.y ) / static_cast<float>( launch_dims.y ) )
+            - 1.0f;
+        
+        float3 ray_direction_world = normalize( d.x * U + d.y * V + W );
+        float3 ray_origin_world    = eye;
 
-        if (pointx < 0)
-            pointx *= -1;
-        if (pointy < 0)
-            pointy *= -1;
+        // --- TRANSFORMAÇÃO DO RAIO PARA ESPAÇO DO OBJETO ---
+        // Ray_Obj = Inv_M * Ray_World
+        // O objeto GLTF está estático na origem (0,0,0) na estrutura de aceleração.
+        // Para movê-lo virtualmente, transformamos o raio pelo inverso da matriz da mão.
+        const float3 ray_origin = make_float3(whitted::params.inverse_object_transform * make_float4(ray_origin_world, 1.0f));
+        const float3 ray_direction = make_float3(whitted::params.inverse_object_transform * make_float4(ray_direction_world, 0.0f));
 
-        float point = sqrtf((pointx * pointx) + (pointy * pointy));
+        float3 sample_result = make_float3(0.f);
+        float sample_alpha = 1.0f;
 
-        if (point - fov_a >= 0.f) {
-            payload.fov = false;
-        }
-        else {
-            float fov_b = fov_a * (.5f);
-            if (point - fov_a + fov_b >= 0) {
-                float opacity = (point - fov_a + fov_b) / fov_b ;
-                rnd(seed) > opacity ? payload.fov = true: payload.fov = false;
+        if (whitted::params.mode != 1) {
+            whitted::PayloadRadiance payload;
+            payload.result     = make_float3( 0.0f );
+            payload.depth      = 0;
+            payload.seed = seed;
+            payload.htype = 0;
+            payload.alpha = 1.0f;
+
+            float hy = launch_dims.y / 2;
+            float hx = launch_dims.x / 2;
+            float fov_a = hy * 0.5f;
+            float pointy = launch_idx.y - hy;
+            float pointx = launch_idx.x - hx;
+
+            if (pointx < 0)
+                pointx *= -1;
+            if (pointy < 0)
+                pointy *= -1;
+
+            float point = sqrtf((pointx * pointx) + (pointy * pointy));
+
+            if (point - fov_a >= 0.f) {
+                payload.fov = false;
             }
-            else
-                payload.fov = true;
+            else {
+                float fov_b = fov_a * (.5f);
+                if (point - fov_a + fov_b >= 0) {
+                    float opacity = (point - fov_a + fov_b) / fov_b ;
+                    rnd(seed) > opacity ? payload.fov = true: payload.fov = false;
+                }
+                else
+                    payload.fov = true;
+            }
+
+            // payload.fov = true;
+
+            traceRadiance( whitted::params.handle, ray_origin, ray_direction,
+                        0.00f,  // tmin
+                        1e16f,  // tmax
+                        &payload );
+
+            sample_result = payload.result;
+            sample_alpha = payload.alpha;
+
         }
-
-        // payload.fov = true;
-
-        traceRadiance( whitted::params.handle, ray_origin, ray_direction,
-                    0.00f,  // tmin
-                    1e16f,  // tmax
-                    &payload );
-
-        result = payload.result;
-        alpha = payload.alpha;
-
+        result += sample_result;
+        alpha += sample_alpha;
     }
-    
+
+    result /= static_cast<float>(samples_per_frame);
+    alpha /= static_cast<float>(samples_per_frame);
 
     //
     // Update results
@@ -357,9 +371,22 @@ extern "C" __global__ void __closesthit__radiance()
 {
     const whitted::HitGroupData* hit_group_data = reinterpret_cast<whitted::HitGroupData*>( optixGetSbtDataPointer() );
     const LocalGeometry          geom           = getLocalGeometry( hit_group_data->geometry_data );
-    const float3 ray_dir         = optixGetWorldRayDirection();
-    float3 P    = optixGetWorldRayOrigin() + optixGetRayTmax()*ray_dir;
+    
+    // O raio que atingiu aqui está no Espaço do Objeto.
+    // Precisamos calcular P e N no Espaço do Mundo para iluminação correta.
+    
+    const float3 ray_dir_obj = optixGetWorldRayDirection();
+    const float3 ray_orig_obj = optixGetWorldRayOrigin();
+    float3 P_obj = ray_orig_obj + optixGetRayTmax() * ray_dir_obj;
 
+    // Transformar P e N de volta para World Space
+    float3 P = make_float3(whitted::params.object_transform * make_float4(P_obj, 1.0f));
+    // Para normais, usamos apenas a rotação (w=0)
+    float3 N_local = geom.N;
+    float3 N = normalize(make_float3(whitted::params.object_transform * make_float4(N_local, 0.0f)));
+    
+    // Recalcula direção do raio no mundo (Vetor V)
+    float3 ray_dir = normalize(P - whitted::params.eye); 
     
 
     //
@@ -409,7 +436,6 @@ extern "C" __global__ void __closesthit__radiance()
     // compute direct lighting
     //
 
-    float3 N = geom.N;
     // float3 N = normalize(N_hmd);
     if( hit_group_data->material_data.normal_tex )
     {
@@ -425,20 +451,21 @@ extern "C" __global__ void __closesthit__radiance()
             dot( NN_proj, make_float2( rotation.x,  rotation.y ) ),
             NN.z );
 
-        N = normalize( NN_trns.x * normalize( geom.texcoord[texcoord_idx].dpdu ) + NN_trns.y * normalize( geom.texcoord[texcoord_idx].dpdv ) + NN_trns.z * geom.N );
+        N_local = normalize( NN_trns.x * normalize( geom.texcoord[texcoord_idx].dpdu ) + NN_trns.y * normalize( geom.texcoord[texcoord_idx].dpdv ) + NN_trns.z * geom.N );
+        N = normalize(make_float3(whitted::params.object_transform * make_float4(N_local, 0.0f)));
     }
 
     // Flip normal to the side of the incomming ray
-    if( dot( N, optixGetWorldRayDirection() ) > 0.f )
+    if( dot( N, ray_dir ) > 0.f )
         N = -N;
 
 
     // Implementação do 3D Gaussian
     unsigned int seed = whitted::getPayloadSeed();
 
-    roughness = whitted::params.roughness;
-    // if ((rnd(seed) > roughness) && (rnd(seed) < hit_group_data->material_data.pbr.metallic)  ) {
-    if (metallic > 0.99f) {
+    // roughness = whitted::params.roughness;
+    if ( metallic > 0.5f) {
+    // if (metallic > 0.99f) {
         float3 roughNormal = N;
         roughNormal.x -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
         roughNormal.y -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
@@ -499,8 +526,10 @@ extern "C" __global__ void __closesthit__radiance()
             // O resultado do raio secundário é o resultado final para este hit.
             whitted::setPayloadResult( secondary_payload.result );
             payload->alpha = secondary_payload.alpha;
-            // --- FIM DA CORREÇÃO ---
-            return;
+            
+
+            spec_color = secondary_payload.result;
+            // return;
 
         }
         else if( whitted::params.mode == 2 || whitted::params.mode == 3) { //Octree Mode
@@ -516,61 +545,23 @@ extern "C" __global__ void __closesthit__radiance()
             float4 texture_color = tex2D<float4>(whitted::params.reflection_texture, u, v);
 
             // Set the ray payload with the color from the environment map
-            float3 result_color = convertSRGBToRGB(make_float3(texture_color.x, texture_color.y, texture_color.z));
+            
+            // float3 result_color = convertSRGBToRGB(make_float3(texture_color.x, texture_color.y, texture_color.z));
+            spec_color = convertSRGBToRGB(make_float3(texture_color.x, texture_color.y, texture_color.z));
 
-            whitted::setPayloadResult( result_color );
-            return;
+            // whitted::setPayloadResult( result_color );
+            // return;
         }
-        
+        result = diff_color + spec_color;
     }
+    else   
+        result = make_float3(base_color);
+
+
 
     unsigned int depth = whitted::getPayloadDepth() + 1;
 
-    bool indirect = false;
     
-    // int i = rnd(seed) * whitted::params.lights.count;
-    for (int i= 0; i < whitted::params.lights.count; i++) {
-        Light light = whitted::params.lights[i];
-        if( light.type == Light::Type::POINT )
-            {
-                if( depth < whitted::MAX_TRACE_DEPTH )
-                {
-                    // TODO: optimize
-                    const float  L_dist  = length( light.point.position - geom.P );
-                    const float3 L       = ( light.point.position - geom.P ) / L_dist;
-                    const float3 V       = -normalize( optixGetWorldRayDirection() );
-                    const float3 H       = normalize( L + V );
-                    const float  N_dot_L = dot( N, L );
-                    const float  N_dot_V = dot( N, V );
-                    const float  N_dot_H = dot( N, H );
-                    const float  V_dot_H = dot( V, H );
-
-                    if( N_dot_L > 0.0f && N_dot_V > 0.0f )
-                    {
-                        const float tmin        = 0.001f;           // TODO
-                        const float tmax        = L_dist - 0.001f;  // TODO
-                        const float attenuation = whitted::traceOcclusion( whitted::params.handle, geom.P, L, tmin, tmax );
-                        if( attenuation > 0.f )
-                        {
-                            const float3 F     = whitted::schlick( spec_color, V_dot_H );
-                            const float  G_vis = whitted::vis( N_dot_L, N_dot_V, alpha );
-                            const float  D     = whitted::ggxNormal( N_dot_H, alpha );
-
-                            const float3 diff = ( 1.0f - F ) * diff_color / M_PIf;
-                            const float3 spec = F * G_vis * D;
-
-                            result += light.point.color * attenuation * light.point.intensity * N_dot_L * ( diff + spec );
-                        }
-                        
-                    }
-                    
-                    
-                }
-            }
-            else if( light.type == Light::Type::AMBIENT ) {
-                result += light.ambient.color * make_float3( base_color );
-            }
-    }
 
     if( hit_group_data->material_data.alpha_mode == MaterialData::ALPHA_MODE_BLEND )
     {

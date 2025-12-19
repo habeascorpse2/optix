@@ -187,6 +187,8 @@ struct LaunchParams
     // Agrupar membros por tamanho (maior para o menor) para garantir layout consistente.
 
     sutil::Matrix4x4 gaussianModelMatrix;
+    sutil::Matrix4x4 object_transform;
+    sutil::Matrix4x4 inverse_object_transform;
     
     // Membros de 8 bytes (64 bits) - Ponteiros e Handles
     float4*                  accum_buffer;
