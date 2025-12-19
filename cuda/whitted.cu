@@ -443,7 +443,7 @@ extern "C" __global__ void __closesthit__radiance()
         roughNormal.x -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
         roughNormal.y -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
         roughNormal.z -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
-        sutil::Matrix4x4 modelMatrix(whitted::params.modelMatrix);
+        sutil::Matrix4x4 modelMatrix(whitted::params.gaussianModelMatrix);
 
         uint64_t payload_ptr = (uint64_t)(optixGetPayload_5()) | ((uint64_t)(optixGetPayload_6()) << 32);
         whitted::PayloadRadiance* payload = reinterpret_cast<whitted::PayloadRadiance*>(payload_ptr);

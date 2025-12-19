@@ -137,6 +137,10 @@ struct VRState
 
     XrPassthroughFB passthroughFeature = XR_NULL_HANDLE;
     // O XrPassthroughLayerFB será criado no loop de renderização.
+
+    // Input Actions
+    XrActionSet actionSet = XR_NULL_HANDLE;
+    XrAction moveAction = XR_NULL_HANDLE;
 };
 
 
@@ -296,6 +300,49 @@ void snapshotImage(sutil::CUDAOutputBuffer<uchar4>& output_buffer ) {
     file.append(snapLabel + "-" + std::to_string(snapCounter) + ".png");
     snapCounter++;
     sutil::saveImage( file.c_str(), buffer, false );
+}
+
+// Função para processar input do controle VR
+void handleControllerInput(VRState& vrState)
+{
+    if (vrState.session == XR_NULL_HANDLE) return;
+
+    const XrActiveActionSet activeActionSet = {vrState.actionSet, XR_NULL_PATH};
+    XrActionsSyncInfo syncInfo = {XR_TYPE_ACTIONS_SYNC_INFO};
+    syncInfo.countActiveActionSets = 1;
+    syncInfo.activeActionSets = &activeActionSet;
+    
+    if (XR_FAILED(xrSyncActions(vrState.session, &syncInfo))) return;
+
+    XrActionStateGetInfo getInfo = {XR_TYPE_ACTION_STATE_GET_INFO};
+    getInfo.action = vrState.moveAction;
+    
+    XrActionStateVector2f moveState = {XR_TYPE_ACTION_STATE_VECTOR2F};
+    if (XR_FAILED(xrGetActionStateVector2f(vrState.session, &getInfo, &moveState))) return;
+
+    if (moveState.isActive && (fabsf(moveState.currentState.x) > 0.1f || fabsf(moveState.currentState.y) > 0.1f)) {
+        const float move_speed = 0.05f;
+        
+        // Direção do headset projetada no chão
+        glm::vec3 forward = g_headset_orientation * glm::vec3(0.0f, 0.0f, -1.0f);
+        forward.y = 0.0f;
+        if (glm::length(forward) > 0.01f) forward = glm::normalize(forward);
+
+        glm::vec3 right = g_headset_orientation * glm::vec3(1.0f, 0.0f, 0.0f);
+        right.y = 0.0f;
+        if (glm::length(right) > 0.01f) right = glm::normalize(right);
+
+        // Input do analógico (Y é frente/trás, X é esquerda/direita)
+        float dx = moveState.currentState.x;
+        float dy = moveState.currentState.y;
+
+        float3 move_vec = make_float3(
+            forward.x * dy + right.x * dx,
+            forward.y * dy + right.y * dx,
+            forward.z * dy + right.z * dx
+        );
+        nav_offset += move_speed * move_vec;
+    }
 }
 
 // Adicione esta função antes do loop principal
@@ -563,11 +610,11 @@ void initLaunchParams( const sutil::GaussianScene& gscene, const sutil::Scene& s
 void updateModel( ) {
 
     // Construir a matriz do modelo usando sutil::Matrix4x4
-    params.modelMatrix = sutil::Matrix4x4::translate( make_float3(g_position.x, g_position.y, g_position.z) );
-    params.modelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.z), make_float3(0,0,1) );
-    params.modelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.y), make_float3(0,1,0) );
-    params.modelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.x), make_float3(1,0,0) );
-    params.modelMatrix *= sutil::Matrix4x4::scale( make_float3(g_scale.x, g_scale.y, g_scale.z) );
+    params.gaussianModelMatrix = sutil::Matrix4x4::translate( make_float3(g_position.x, g_position.y, g_position.z) );
+    params.gaussianModelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.z), make_float3(0,0,1) );
+    params.gaussianModelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.y), make_float3(0,1,0) );
+    params.gaussianModelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.x), make_float3(1,0,0) );
+    params.gaussianModelMatrix *= sutil::Matrix4x4::scale( make_float3(g_scale.x, g_scale.y, g_scale.z) );
 }
 
 
@@ -1012,6 +1059,34 @@ int main( int argc, char* argv[] )
             }
             // --- FIM PASSO 1 ---
 
+            // --- CONFIGURAÇÃO DE INPUT (ACTIONS) ---
+            XrActionSetCreateInfo actionSetInfo = {XR_TYPE_ACTION_SET_CREATE_INFO};
+            strcpy(actionSetInfo.actionSetName, "gameplay");
+            strcpy(actionSetInfo.localizedActionSetName, "Gameplay");
+            xr_check(xrCreateActionSet(vrState.instance, &actionSetInfo, &vrState.actionSet), "Falha ao criar ActionSet");
+
+            XrActionCreateInfo actionInfo = {XR_TYPE_ACTION_CREATE_INFO};
+            actionInfo.actionType = XR_ACTION_TYPE_VECTOR2F_INPUT;
+            strcpy(actionInfo.actionName, "move");
+            strcpy(actionInfo.localizedActionName, "Move");
+            xr_check(xrCreateAction(vrState.actionSet, &actionInfo, &vrState.moveAction), "Falha ao criar Action Move");
+
+            // Sugerir bindings para Oculus Touch (Quest)
+            XrPath oculusTouchProfilePath;
+            xrStringToPath(vrState.instance, "/interaction_profiles/oculus/touch_controller", &oculusTouchProfilePath);
+            
+            XrPath movePath;
+            xrStringToPath(vrState.instance, "/user/hand/left/input/thumbstick", &movePath);
+
+            std::vector<XrActionSuggestedBinding> bindings;
+            bindings.push_back({vrState.moveAction, movePath});
+
+            XrInteractionProfileSuggestedBinding suggestedBindings = {XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+            suggestedBindings.interactionProfile = oculusTouchProfilePath;
+            suggestedBindings.suggestedBindings = bindings.data();
+            suggestedBindings.countSuggestedBindings = (uint32_t)bindings.size();
+            xr_check(xrSuggestInteractionProfileBindings(vrState.instance, &suggestedBindings), "Falha ao sugerir bindings");
+
             // 3. Obter o SystemId (o headset)
             XrSystemGetInfo systemGetInfo = {};
             systemGetInfo.type = XR_TYPE_SYSTEM_GET_INFO;
@@ -1058,6 +1133,12 @@ int main( int argc, char* argv[] )
             xr_check(xrCreateSession(vrState.instance, &sessionCreateInfo, &vrState.session), "Falha ao criar sessão OpenXR");
 
             std::cout << "Sessão OpenXR criada com sucesso!" << std::endl;
+
+            // Anexar ActionSet à sessão
+            XrSessionActionSetsAttachInfo attachInfo = {XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
+            attachInfo.countActionSets = 1;
+            attachInfo.actionSets = &vrState.actionSet;
+            xr_check(xrAttachSessionActionSets(vrState.session, &attachInfo), "Falha ao anexar ActionSets");
 
             // --- INÍCIO PASSO 1: CRIAR E INICIAR O PASSTHROUGH ---
             if (passthrough_supported) {
@@ -1233,6 +1314,7 @@ int main( int argc, char* argv[] )
 
                 updateModel(); // Atualiza a matriz do modelo (rotação, etc.)
                 handleKeyboardInput(window, true /* is_vr_mode */); // Passa o flag de VR
+                handleControllerInput(vrState); // Processa input do controle VR
                 // O objeto permanece estático. g_position é controlado apenas pela GUI para o reflexo.
 
                 if (camera_changed) {
