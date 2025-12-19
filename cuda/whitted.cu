@@ -70,8 +70,12 @@ extern "C" __global__ void __raygen__pinhole()
                            ( static_cast<float>( launch_idx.y ) + subpixel_jitter.y ) / static_cast<float>( launch_dims.y ) )
         - 1.0f;
     const float3 ray_direction = normalize( d.x * U + d.y * V + W );
+    // float3 ray_direction = normalize(
+    //     quat_rotate(whitted::params.Q_head, d.x * U + d.y * V + W)
+    // );
     const float3 ray_origin    = eye;
     float3 result = make_float3(0.f);
+    float alpha = 1.0f;
 
     
 
@@ -81,6 +85,7 @@ extern "C" __global__ void __raygen__pinhole()
         payload.depth      = 0;
         payload.seed = seed;
         payload.htype = 0;
+        payload.alpha = 1.0f;
 
         float hy = launch_dims.y / 2;
         float hx = launch_dims.x / 2;
@@ -116,6 +121,7 @@ extern "C" __global__ void __raygen__pinhole()
                     &payload );
 
         result = payload.result;
+        alpha = payload.alpha;
 
     }
     
@@ -136,7 +142,12 @@ extern "C" __global__ void __raygen__pinhole()
     if (whitted::params.is_vr == true)
         // Para o modo VR com Chroma Key, garantimos que o alfa seja 1.0 (opaco).
         // A cor RGB já será verde (do miss_color) ou a cor da cena.
-        whitted::params.frame_buffer_ptr[image_index] = make_color_alpha_one(accum_color);
+        whitted::params.frame_buffer_ptr[image_index] = make_uchar4(
+            static_cast<unsigned char>( __saturatef( accum_color.x ) * 255.99f ),
+            static_cast<unsigned char>( __saturatef( accum_color.y ) * 255.99f ),
+            static_cast<unsigned char>( __saturatef( accum_color.z ) * 255.99f ),
+            static_cast<unsigned char>( __saturatef( alpha ) * 255.99f )
+        );
     else {
         whitted::params.frame_buffer_ptr[image_index] = make_color(accum_color);
         whitted::params.accum_buffer[image_index] = make_float4( accum_color, 1.0f );
@@ -332,6 +343,7 @@ extern "C" __global__ void __miss__radiance()
     }
     else {
         whitted::setPayloadResult( whitted::params.miss_color );
+        payload->alpha = 0.0f;
     }
 }
 
@@ -347,6 +359,8 @@ extern "C" __global__ void __closesthit__radiance()
     const LocalGeometry          geom           = getLocalGeometry( hit_group_data->geometry_data );
     const float3 ray_dir         = optixGetWorldRayDirection();
     float3 P    = optixGetWorldRayOrigin() + optixGetRayTmax()*ray_dir;
+
+    
 
     //
     // Retrieve material data
@@ -396,6 +410,7 @@ extern "C" __global__ void __closesthit__radiance()
     //
 
     float3 N = geom.N;
+    // float3 N = normalize(N_hmd);
     if( hit_group_data->material_data.normal_tex )
     {
         const int texcoord_idx = hit_group_data->material_data.normal_tex.texcoord;
@@ -429,15 +444,19 @@ extern "C" __global__ void __closesthit__radiance()
         roughNormal.y -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
         roughNormal.z -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
         sutil::Matrix4x4 modelMatrix(whitted::params.modelMatrix);
-        modelMatrix.inverse(); // Inverte a matriz para uso
 
         uint64_t payload_ptr = (uint64_t)(optixGetPayload_5()) | ((uint64_t)(optixGetPayload_6()) << 32);
         whitted::PayloadRadiance* payload = reinterpret_cast<whitted::PayloadRadiance*>(payload_ptr);
 
-        
-        float3 R = normalize(reflect(ray_dir, roughNormal));
-        float3 Rn = make_float3(modelMatrix * make_float4(R, 0.f));
+        // View vector correto
+        float3 V = normalize(ray_dir);
+        float3 R = normalize(reflect(V, roughNormal));
         float3 Pn = make_float3(modelMatrix * make_float4(P, 1.f));
+        float3 Rn = normalize(make_float3(modelMatrix * make_float4(R, 0.f)));
+        Rn.y *= -1; // Correção de coordenadas para o sistema de textura    
+        Pn.y  *= -1; // Correção de coordenadas para o sistema de textura  
+        Rn.z *= -1; // Correção de coordenadas para o sistema de textura
+        Pn.z  *= -1; // Correção de coordenadas para o sistema de textura
 
         //
         //  Traça o raio para as Gaussianas
@@ -454,6 +473,7 @@ extern "C" __global__ void __closesthit__radiance()
             secondary_payload.depth = payload->depth + 1; // Incrementar profundidade
             secondary_payload.seed = payload->seed; // Reutilizar a semente ou gerar uma nova
             secondary_payload.htype = 1; // Indica que é um raio de reflexão de Gaussiana
+            secondary_payload.alpha = 1.0f;
             secondary_payload.ray_origin = origin;
             secondary_payload.ray_dir = direction;
             
@@ -478,6 +498,7 @@ extern "C" __global__ void __closesthit__radiance()
             
             // O resultado do raio secundário é o resultado final para este hit.
             whitted::setPayloadResult( secondary_payload.result );
+            payload->alpha = secondary_payload.alpha;
             // --- FIM DA CORREÇÃO ---
             return;
 

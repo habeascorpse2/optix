@@ -101,6 +101,8 @@ __device__ float3 quaternion_rotate(float4 q, float3 v) {
     return v * (q.w*q.w - uu) + 2.0f * qv * uv + 2.0f * q.w * qcross;
 }
 
+
+
 __device__ float gaussian_density(
     float3 &point,
     float3 &mean,
@@ -884,6 +886,21 @@ __device__ float getGOpacity(int id, bool fov) {
         return whitted::params.g_opacity[id];
     else
         return whitted::params.g2_opacity[id];
+}
+
+__device__ __forceinline__ float3 quat_rotate(const float4& q, const float3& v)
+{
+    // q = (x, y, z, w)
+    const float3 qv = make_float3(q.x, q.y, q.z);
+    const float3 t  = 2.0f * cross(qv, v);
+    return v + q.w * t + cross(qv, t);
+}
+
+__device__ __forceinline__ float3 quat_rotate_inv(const float4& q, const float3& v)
+{
+    // rotação inversa = conjugado
+    const float4 qc = make_float4(-q.x, -q.y, -q.z, q.w);
+    return quat_rotate(qc, v);
 }
 
 #endif

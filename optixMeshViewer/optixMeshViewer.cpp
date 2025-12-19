@@ -178,7 +178,7 @@ glm::mat4 model;
 
 
 glm::quat g_headset_orientation;
-float nav_scale = 1.f;   
+float nav_scale = 1.0f;   
 float3 initial_headset_pos = make_float3(0.f, 0.f, 0.f); // Posição inicial do headset
 bool initial_pos_captured = false; // Flag para capturar a posição apenas uma vez
 
@@ -326,6 +326,7 @@ void handleKeyboardInput(GLFWwindow* window, bool is_vr_mode)
         if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
             nav_offset.y -= move_speed; // Movimento vertical para baixo
 
+    
     } else {
         // Lógica original para modo desktop
         if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
@@ -549,7 +550,7 @@ void initLaunchParams( const sutil::GaussianScene& gscene, const sutil::Scene& s
     
     // Se estiver em modo VR com ALVR, usamos verde-limão para chroma key.
     // Caso contrário, usamos a cor de fundo normal.
-    params.miss_color   = make_float3( 0.0f, 1.0f, 0.0f );
+    params.miss_color   = make_float3( 1.0f, 1.0f, 0.0f );
 
     //CUDA_CHECK( cudaStreamCreate( &stream ) );
     CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_params ), sizeof( whitted::LaunchParams ) ) );
@@ -577,12 +578,10 @@ void handleCameraUpdate( whitted::LaunchParams& params )
 
     // Se o movimento foi pelo mouse, reseta a matriz do objeto.
     if (mouse_button != -1) {
-        // params.gltfModelMatrix.identity();
     } else { // Se o movimento foi pelo teclado, atualiza a matriz do objeto.
         float3 eye_prev = make_float3(params.eye.x, params.eye.y, params.eye.z);
         float3 eye_curr = camera.eye();
         float3 move_vec = eye_curr - eye_prev;
-        // params.gltfModelMatrix = sutil::Matrix4x4::translate(move_vec) * params.gltfModelMatrix;
     }
     
     camera.setAspectRatio( static_cast<float>( width ) / static_cast<float>( height ) );
@@ -952,7 +951,6 @@ int main( int argc, char* argv[] )
             initLaunchParams( gscene, scene );
             params.reflection_texture = reflection_texture;
             g_position = glm::vec3(0, 0, 0);
-            // params.gltfModelMatrix.identity();
             g_rotation = glm::vec3(0, 0, 0);
             g_scale = glm::vec3(1.f, 1.f, 1.f);
             params.mode = 0;
@@ -1235,6 +1233,7 @@ int main( int argc, char* argv[] )
 
                 updateModel(); // Atualiza a matriz do modelo (rotação, etc.)
                 handleKeyboardInput(window, true /* is_vr_mode */); // Passa o flag de VR
+                // O objeto permanece estático. g_position é controlado apenas pela GUI para o reflexo.
 
                 if (camera_changed) {
                     params.subframe_index = 0;
@@ -1298,7 +1297,6 @@ int main( int argc, char* argv[] )
                             viewCount, &viewCountOutput, views.data()),
                          "Falha em xrLocateViews");
 
-               
                 std::vector<XrCompositionLayerProjectionView> projectionViews(viewCount, {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW});
 
                 auto t0 = std::chrono::steady_clock::now();
@@ -1330,36 +1328,34 @@ int main( int argc, char* argv[] )
                     // --- INÍCIO DA CORREÇÃO DE ESCALA DE MOVIMENTO ---
                     const float3 current_headset_pos = make_float3(pose.position.x, pose.position.y, pose.position.z);
 
-                    // 1. Captura a posição inicial do headset no primeiro quadro válido.
-                    if (!initial_pos_captured && (viewState.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT)) {
-                        initial_headset_pos = current_headset_pos;
-                        initial_pos_captured = true;
-                    }
 
-                    // 2. Calcula o deslocamento físico a partir da posição inicial.
-                    const float3 physical_displacement = current_headset_pos - initial_headset_pos;
-
-                    // 3. A posição final do olho é a soma da navegação (teclado) com a posição inicial
-                    //    e o deslocamento físico escalado.
-                    params.eye = nav_offset + initial_headset_pos + (physical_displacement * nav_scale);
-                    // --- FIM DA CORREÇÃO DE ESCALA DE MOVIMENTO ---
+                    params.eye = nav_offset + current_headset_pos * nav_scale;
+                    
 
                     const float w_len = 2.0f;
-                    // Calculamos v_len com base no FOV vertical (em graus) definido na GUI.
-                    const float v_len = w_len * tanf(glm::radians(fov) * 0.5f);
-                    // Calculamos u_len com base em v_len e na proporção da tela do headset.
-                    const float aspect_ratio = static_cast<float>(vr_width) / static_cast<float>(vr_height);
-                    const float u_len = v_len * aspect_ratio;
+                    // Calculamos as dimensões do plano de imagem baseadas no FOV do OpenXR
+                    const float tanAngleLeft = tanf(views[i].fov.angleLeft);
+                    const float tanAngleRight = tanf(views[i].fov.angleRight);
+                    const float tanAngleDown = tanf(views[i].fov.angleDown);
+                    const float tanAngleUp = tanf(views[i].fov.angleUp);
+
+                    const float v_len = w_len * (tanAngleUp - tanAngleDown) * 0.5f;
+                    const float u_len = w_len * (tanAngleRight - tanAngleLeft) * 0.5f;
                     
-                    glm::vec3 u_vec = u_len * (xr_orientation * glm::vec3(1.0f, 0.0f, 0.0f));
-                    glm::vec3 v_vec = v_len * (xr_orientation * glm::vec3(0.0f, 1.0f, 0.0f));
-                    glm::vec3 w_vec = w_len * (xr_orientation * glm::vec3(0.0f, 0.0f, -1.0f));
+                    // Correção para frustum assimétrico (drift rotacional) e centro óptico
+                    const float center_x = w_len * (tanAngleRight + tanAngleLeft) * 0.5f;
+                    const float center_y = w_len * (tanAngleUp + tanAngleDown) * 0.5f;
+
+                    glm::vec3 u_vec = xr_orientation * glm::vec3(u_len, 0.0f, 0.0f);
+                    glm::vec3 v_vec = xr_orientation * glm::vec3(0.0f, v_len, 0.0f);
+                    glm::vec3 w_vec = xr_orientation * glm::vec3(center_x, center_y, -w_len);
+
                     params.U = make_float3(u_vec.x, u_vec.y, u_vec.z);
                     params.V = make_float3(v_vec.x, v_vec.y, v_vec.z);
                     params.W = make_float3(w_vec.x, w_vec.y, w_vec.z);
-                    // --- FIM DA CORREÇÃO ---
+                    
 
-                    if(camera_changed) params.subframe_index = 0;
+                    params.subframe_index = 0;
 
                     // 2. Mapear o PBO para obter um CUdeviceptr
                     CUDA_CHECK(cudaGraphicsMapResources(1, &pbo_resources[i], 0));

@@ -236,6 +236,7 @@ struct PayloadRadiance
 {
     float3 result;
     float  importance;
+    float  alpha;
     
     float3       attenuation;
     unsigned int seed;
