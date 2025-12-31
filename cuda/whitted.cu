@@ -66,8 +66,8 @@ extern "C" __global__ void __raygen__pinhole()
     for (int i = 0; i < samples_per_frame; ++i) {
         // The center of each pixel is at fraction (0.5,0.5)
         float2 subpixel_jitter = make_float2( 0.5f, 0.5f );
-        if (samples_per_frame > 1 || subframe_index > 0)
-            subpixel_jitter = make_float2( rnd( seed ), rnd( seed ) );
+        // if (samples_per_frame > 1 || subframe_index > 0)
+        //     subpixel_jitter = make_float2( rnd( seed ), rnd( seed ) );
 
         const float2 d =
             2.0f
@@ -78,12 +78,8 @@ extern "C" __global__ void __raygen__pinhole()
         float3 ray_direction_world = normalize( d.x * U + d.y * V + W );
         float3 ray_origin_world    = eye;
 
-        // --- TRANSFORMAÇÃO DO RAIO PARA ESPAÇO DO OBJETO ---
-        // Ray_Obj = Inv_M * Ray_World
-        // O objeto GLTF está estático na origem (0,0,0) na estrutura de aceleração.
-        // Para movê-lo virtualmente, transformamos o raio pelo inverso da matriz da mão.
-        const float3 ray_origin = make_float3(whitted::params.inverse_object_transform * make_float4(ray_origin_world, 1.0f));
-        const float3 ray_direction = make_float3(whitted::params.inverse_object_transform * make_float4(ray_direction_world, 0.0f));
+        const float3 ray_origin = ray_origin_world;
+        const float3 ray_direction = ray_direction_world;
 
         float3 sample_result = make_float3(0.f);
         float sample_alpha = 1.0f;
@@ -98,7 +94,7 @@ extern "C" __global__ void __raygen__pinhole()
 
             float hy = launch_dims.y / 2;
             float hx = launch_dims.x / 2;
-            float fov_a = hy * 0.5f;
+            float fov_a = hy * 0.3f;
             float pointy = launch_idx.y - hy;
             float pointx = launch_idx.x - hx;
 
@@ -113,7 +109,7 @@ extern "C" __global__ void __raygen__pinhole()
                 payload.fov = false;
             }
             else {
-                float fov_b = fov_a * (.5f);
+                float fov_b = fov_a * (.3f);
                 if (point - fov_a + fov_b >= 0) {
                     float opacity = (point - fov_a + fov_b) / fov_b ;
                     rnd(seed) > opacity ? payload.fov = true: payload.fov = false;
@@ -182,7 +178,7 @@ extern "C" __global__ void __intersection__()
     // Acessa a matriz correta usando aritmética de ponteiros
     // const float* inv_transform = whitted::params.g_cov3d9[prim_idx * 9];
     float* inv_cov3d = getCov9(prim_idx,payload->fov);
-    const float Q = 6.25f;
+    const float Q = 4.25f;
 
     // 3. Obter o raio (funções do OptiX já retornam float3)
     const float3 ray_origin = optixGetWorldRayOrigin();
@@ -332,10 +328,8 @@ extern "C" __global__ void __miss__radiance()
             float power = -0.5f * min_dist_sq;
             float opacity = expf(power) * getGOpacity(idx, payload->fov);
 
-        
-            float3 dir = normalize(g_mean - ray_origin);
-            dir = dir / length(dir);
-            // dir = -ray_dir; // confirmar
+            // FIX: A direção para SH deve apontar da Gaussiana para a Câmera (ray_origin)
+            float3 dir = normalize(ray_origin - g_mean);
 
             if (opacity > 0) { // Se a opacidade for significativa) {      
                 float3 color = get_GaussianRGB(dir, idx, payload->fov);
@@ -356,8 +350,16 @@ extern "C" __global__ void __miss__radiance()
         return;
     }
     else {
-        whitted::setPayloadResult( whitted::params.miss_color );
-        payload->alpha = 0.0f;
+        if (whitted::params.is_vr == false) {
+            // Para o modo VR com Chroma Key, a cor de miss é verde com alfa 0.
+            whitted::setPayloadResult( make_float3(0.8f, .8f, 0.8f) );
+            payload->alpha = 0.0f;
+        }
+        else {
+            whitted::setPayloadResult( whitted::params.miss_color );
+            payload->alpha = 0.0f;
+        }
+        
     }
 }
 
@@ -375,18 +377,20 @@ extern "C" __global__ void __closesthit__radiance()
     // O raio que atingiu aqui está no Espaço do Objeto.
     // Precisamos calcular P e N no Espaço do Mundo para iluminação correta.
     
-    const float3 ray_dir_obj = optixGetWorldRayDirection();
-    const float3 ray_orig_obj = optixGetWorldRayOrigin();
-    float3 P_obj = ray_orig_obj + optixGetRayTmax() * ray_dir_obj;
+    // FIX: Ponto de impacto exato no mundo
+    const float3 P = optixGetWorldRayOrigin() + optixGetRayTmax() * optixGetWorldRayDirection();
 
-    // Transformar P e N de volta para World Space
-    float3 P = make_float3(whitted::params.object_transform * make_float4(P_obj, 1.0f));
-    // Para normais, usamos apenas a rotação (w=0)
-    float3 N_local = geom.N;
-    float3 N = normalize(make_float3(whitted::params.object_transform * make_float4(N_local, 0.0f)));
-    
-    // Recalcula direção do raio no mundo (Vetor V)
-    float3 ray_dir = normalize(P - whitted::params.eye); 
+    // FIX: Obter o centro do objeto (esfera) no mundo a partir da matriz de instância
+    // A função correta é optixGetObjectToWorldTransformMatrix
+    float m[12];
+    optixGetObjectToWorldTransformMatrix(m);
+    float3 center = make_float3(m[3], m[7], m[11]);
+
+    // FIX: Normal geométrica perfeita (independente da rotação da malha)
+    float3 N = normalize(P - center);
+
+    // FIX: Vetor de visão intrínseco (V)
+    const float3 V = optixGetWorldRayDirection();
     
 
     //
@@ -436,7 +440,6 @@ extern "C" __global__ void __closesthit__radiance()
     // compute direct lighting
     //
 
-    // float3 N = normalize(N_hmd);
     if( hit_group_data->material_data.normal_tex )
     {
         const int texcoord_idx = hit_group_data->material_data.normal_tex.texcoord;
@@ -451,12 +454,12 @@ extern "C" __global__ void __closesthit__radiance()
             dot( NN_proj, make_float2( rotation.x,  rotation.y ) ),
             NN.z );
 
-        N_local = normalize( NN_trns.x * normalize( geom.texcoord[texcoord_idx].dpdu ) + NN_trns.y * normalize( geom.texcoord[texcoord_idx].dpdv ) + NN_trns.z * geom.N );
-        N = normalize(make_float3(whitted::params.object_transform * make_float4(N_local, 0.0f)));
+        float3 N_local = normalize( NN_trns.x * normalize( geom.texcoord[texcoord_idx].dpdu ) + NN_trns.y * normalize( geom.texcoord[texcoord_idx].dpdv ) + NN_trns.z * geom.N );
+        N = normalize(optixTransformNormalFromObjectToWorldSpace( N_local ));
     }
 
     // Flip normal to the side of the incomming ray
-    if( dot( N, ray_dir ) > 0.f )
+    if( dot( N, V ) > 0.f )
         N = -N;
 
 
@@ -476,14 +479,11 @@ extern "C" __global__ void __closesthit__radiance()
         whitted::PayloadRadiance* payload = reinterpret_cast<whitted::PayloadRadiance*>(payload_ptr);
 
         // View vector correto
-        float3 V = normalize(ray_dir);
-        float3 R = normalize(reflect(V, roughNormal));
+        float3 R = normalize(reflect(V, N));
         float3 Pn = make_float3(modelMatrix * make_float4(P, 1.f));
         float3 Rn = normalize(make_float3(modelMatrix * make_float4(R, 0.f)));
         Rn.y *= -1; // Correção de coordenadas para o sistema de textura    
         Pn.y  *= -1; // Correção de coordenadas para o sistema de textura  
-        Rn.z *= -1; // Correção de coordenadas para o sistema de textura
-        Pn.z  *= -1; // Correção de coordenadas para o sistema de textura
 
         //
         //  Traça o raio para as Gaussianas

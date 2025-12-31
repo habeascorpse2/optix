@@ -141,6 +141,9 @@ struct VRState
     // Input Actions
     XrActionSet actionSet = XR_NULL_HANDLE;
     XrAction moveAction = XR_NULL_HANDLE;
+    XrAction triggerAction = XR_NULL_HANDLE; // Ação para o gatilho
+    XrAction handPoseAction = XR_NULL_HANDLE;
+    XrSpace handSpace = XR_NULL_HANDLE;
 };
 
 
@@ -187,10 +190,23 @@ float3 initial_headset_pos = make_float3(0.f, 0.f, 0.f); // Posição inicial do
 bool initial_pos_captured = false; // Flag para capturar a posição apenas uma vez
 
 
-float3 nav_offset = make_float3(0.f, 0.f, 0.f);
+float3 nav_offset = make_float3(0.f, 0.f, 2.0f); // Começa 2 metros atrás para ver o objeto
 
 float near = 0.1;
 float far = 1000.f;
+
+// --- VARIÁVEIS GLOBAIS PARA INSTANCIAMENTO DINÂMICO ---
+std::vector<OptixInstance> g_instances;       // Lista de instâncias na CPU
+OptixTraversableHandle g_scene_gas = 0;       // Handle da geometria original (protótipo)
+int g_held_instance_idx = -1;                 // Índice da instância sendo segurada (-1 = nenhuma)
+bool g_trigger_was_pressed = false;           // Estado anterior do gatilho
+
+// Buffers persistentes para o IAS (para evitar realocação constante)
+CUdeviceptr d_instances_buffer = 0;
+CUdeviceptr d_ias_output_buffer = 0;
+CUdeviceptr d_ias_scratch_buffer = 0;
+size_t      d_ias_output_size = 0;
+size_t      d_ias_scratch_size = 0;
 
 
 std::string snapLabel = "snapshot";
@@ -289,6 +305,57 @@ cudaTextureObject_t createReflectionTexture(const std::string& jpg_path)
     return cudaTex;
 }
 
+// --- FUNÇÃO PARA CONSTRUIR/ATUALIZAR O IAS ---
+void buildDynamicIAS(const sutil::Scene& scene) {
+    if (g_instances.empty()) {
+        params.handle = g_scene_gas; // Se não houver instâncias, renderiza a cena original estática
+        return;
+    }
+
+    // 1. Copiar instâncias para a GPU
+    size_t instances_size_in_bytes = sizeof(OptixInstance) * g_instances.size();
+    
+    // Realocar se necessário (simples: libera e aloca de novo se crescer, ou apenas aloca na primeira vez)
+    // Para produção, ideal seria gerenciar capacidade vs tamanho.
+    if (d_instances_buffer) CUDA_CHECK(cudaFree((void*)d_instances_buffer));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_instances_buffer), instances_size_in_bytes));
+    CUDA_CHECK(cudaMemcpy((void*)d_instances_buffer, g_instances.data(), instances_size_in_bytes, cudaMemcpyHostToDevice));
+
+    // 2. Configurar Build Input
+    OptixBuildInput build_input = {};
+    build_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+    build_input.instanceArray.instances = d_instances_buffer;
+    build_input.instanceArray.numInstances = static_cast<unsigned int>(g_instances.size());
+
+    // 3. Configurar Opções de Build
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_UPDATE | OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
+    accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
+
+    // 4. Calcular Tamanhos de Memória
+    OptixAccelBufferSizes buffer_sizes;
+    OPTIX_CHECK(optixAccelComputeMemoryUsage(scene.context(), &accel_options, &build_input, 1, &buffer_sizes));
+
+    // Re-alocar buffers de saída/scratch se o tamanho necessário aumentou
+    if (buffer_sizes.outputSizeInBytes > d_ias_output_size) {
+        if (d_ias_output_buffer) CUDA_CHECK(cudaFree((void*)d_ias_output_buffer));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_ias_output_buffer), buffer_sizes.outputSizeInBytes));
+        d_ias_output_size = buffer_sizes.outputSizeInBytes;
+    }
+    if (buffer_sizes.tempSizeInBytes > d_ias_scratch_size) {
+        if (d_ias_scratch_buffer) CUDA_CHECK(cudaFree((void*)d_ias_scratch_buffer));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_ias_scratch_buffer), buffer_sizes.tempSizeInBytes));
+        d_ias_scratch_size = buffer_sizes.tempSizeInBytes;
+    }
+
+    // 5. Construir o IAS
+    OptixTraversableHandle ias_handle;
+    OPTIX_CHECK(optixAccelBuild(scene.context(), 0, &accel_options, &build_input, 1, d_ias_scratch_buffer, d_ias_scratch_size, d_ias_output_buffer, d_ias_output_size, &ias_handle, nullptr, 0));
+
+    // 6. Atualizar o handle global usado no Raygen
+    params.handle = ias_handle;
+}
+
 void snapshotImage(sutil::CUDAOutputBuffer<uchar4>& output_buffer ) {
     sutil::ImageBuffer buffer;
     buffer.data         = output_buffer.getHostPointer();
@@ -303,7 +370,7 @@ void snapshotImage(sutil::CUDAOutputBuffer<uchar4>& output_buffer ) {
 }
 
 // Função para processar input do controle VR
-void handleControllerInput(VRState& vrState)
+void handleControllerInput(VRState& vrState, const XrSpace& referenceSpace, XrTime displayTime)
 {
     if (vrState.session == XR_NULL_HANDLE) return;
 
@@ -342,6 +409,68 @@ void handleControllerInput(VRState& vrState)
             forward.z * dy + right.z * dx
         );
         nav_offset += move_speed * move_vec;
+    }
+
+    // --- LÓGICA DE SPAWN & GRAB (Gatilho) ---
+    XrActionStateGetInfo triggerInfo = {XR_TYPE_ACTION_STATE_GET_INFO};
+    triggerInfo.action = vrState.triggerAction;
+    XrActionStateFloat triggerState = {XR_TYPE_ACTION_STATE_FLOAT};
+    if (XR_SUCCEEDED(xrGetActionStateFloat(vrState.session, &triggerInfo, &triggerState))) {
+        bool is_pressed = triggerState.currentState > 0.5f; // Limiar de ativação
+
+        // Obter posição da mão
+        XrSpaceLocation handLocation = {XR_TYPE_SPACE_LOCATION};
+        xrLocateSpace(vrState.handSpace, referenceSpace, displayTime, &handLocation);
+
+        if (handLocation.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) {
+            glm::vec3 hand_pos = glm::vec3(handLocation.pose.position.x, handLocation.pose.position.y, handLocation.pose.position.z);
+            glm::quat hand_rot = glm::quat(handLocation.pose.orientation.w, handLocation.pose.orientation.x, handLocation.pose.orientation.y, handLocation.pose.orientation.z);
+            
+            // Calcular posição virtual da mão (Mundo VR)
+            glm::vec3 virtual_hand_pos = glm::vec3(nav_offset.x, nav_offset.y, nav_offset.z) + (hand_pos * nav_scale);
+            float gltf_scale = .1f;
+
+            // Construir matriz de transformação (GLM Col-Major)
+            glm::mat4 mat = glm::mat4(1.0f);
+            mat = glm::translate(mat, virtual_hand_pos);
+            mat = mat * glm::mat4_cast(hand_rot);
+            mat = glm::scale(mat, glm::vec3(gltf_scale));
+
+            // Converter para formato OptiX (Row-Major 3x4)
+            float transform[12];
+            const float* m = (const float*)&mat;
+            // Transpor: GLM[col][row] -> OptiX[row][col]
+            transform[0] = m[0*4+0]; transform[1] = m[1*4+0]; transform[2] = m[2*4+0]; transform[3] = m[3*4+0];
+            transform[4] = m[0*4+1]; transform[5] = m[1*4+1]; transform[6] = m[2*4+1]; transform[7] = m[3*4+1];
+            transform[8] = m[0*4+2]; transform[9] = m[1*4+2]; transform[10] = m[2*4+2]; transform[11] = m[3*4+2];
+
+            // 1. Rising Edge (Apertou agora): Criar nova instância
+            if (is_pressed && !g_trigger_was_pressed) {
+                OptixInstance new_instance = {};
+                memcpy(new_instance.transform, transform, sizeof(float)*12);
+                new_instance.instanceId = g_instances.size(); // ID único
+                new_instance.visibilityMask = 255;
+                new_instance.sbtOffset = 0; 
+                new_instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                new_instance.traversableHandle = g_scene_gas; // Aponta para o modelo original
+                
+                g_instances.push_back(new_instance);
+                g_held_instance_idx = g_instances.size() - 1; // Segura o novo objeto
+            }
+            
+            // 2. Holding (Segurando): Atualizar posição da instância segurada
+            else if (is_pressed && g_held_instance_idx != -1) {
+                if (g_held_instance_idx < g_instances.size()) {
+                    memcpy(g_instances[g_held_instance_idx].transform, transform, sizeof(float)*12);
+                }
+            }
+
+            // 3. Falling Edge (Soltou): Parar de segurar
+            else if (!is_pressed && g_trigger_was_pressed) {
+                g_held_instance_idx = -1;
+            }
+        }
+        g_trigger_was_pressed = is_pressed;
     }
 }
 
@@ -604,7 +733,15 @@ void initLaunchParams( const sutil::GaussianScene& gscene, const sutil::Scene& s
 
     params.ghandle = gscene.traversableHandle1();
     params.ghandle2 = gscene.traversableHandle2();
-    params.handle =  scene.traversableHandle();
+    
+    // Salvar o handle da geometria original para instanciar depois
+    // FIX: Usar o GAS da primeira malha para evitar aninhamento de IAS (IAS->IAS) que falha em pipelines de nível único.
+    if (!scene.meshes().empty()) {
+        g_scene_gas = scene.meshes()[0]->gas_handle;
+    } else {
+        g_scene_gas = scene.traversableHandle();
+    }
+    params.handle = g_scene_gas; // Inicializa com a cena estática visível
 }
 
 void updateModel( ) {
@@ -1071,6 +1208,18 @@ int main( int argc, char* argv[] )
             strcpy(actionInfo.localizedActionName, "Move");
             xr_check(xrCreateAction(vrState.actionSet, &actionInfo, &vrState.moveAction), "Falha ao criar Action Move");
 
+            // Action para o Gatilho (Trigger)
+            actionInfo.actionType = XR_ACTION_TYPE_FLOAT_INPUT;
+            strcpy(actionInfo.actionName, "trigger");
+            strcpy(actionInfo.localizedActionName, "Trigger");
+            xr_check(xrCreateAction(vrState.actionSet, &actionInfo, &vrState.triggerAction), "Falha ao criar Action Trigger");
+
+            // Action para a Pose da Mão
+            actionInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
+            strcpy(actionInfo.actionName, "hand_pose");
+            strcpy(actionInfo.localizedActionName, "Hand Pose");
+            xr_check(xrCreateAction(vrState.actionSet, &actionInfo, &vrState.handPoseAction), "Falha ao criar Action Hand Pose");
+
             // Sugerir bindings para Oculus Touch (Quest)
             XrPath oculusTouchProfilePath;
             xrStringToPath(vrState.instance, "/interaction_profiles/oculus/touch_controller", &oculusTouchProfilePath);
@@ -1078,8 +1227,16 @@ int main( int argc, char* argv[] )
             XrPath movePath;
             xrStringToPath(vrState.instance, "/user/hand/left/input/thumbstick", &movePath);
 
+            XrPath triggerPath;
+            xrStringToPath(vrState.instance, "/user/hand/right/input/trigger/value", &triggerPath);
+
+            XrPath handPosePath;
+            xrStringToPath(vrState.instance, "/user/hand/right/input/grip/pose", &handPosePath);
+
             std::vector<XrActionSuggestedBinding> bindings;
             bindings.push_back({vrState.moveAction, movePath});
+            bindings.push_back({vrState.triggerAction, triggerPath});
+            bindings.push_back({vrState.handPoseAction, handPosePath});
 
             XrInteractionProfileSuggestedBinding suggestedBindings = {XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
             suggestedBindings.interactionProfile = oculusTouchProfilePath;
@@ -1139,6 +1296,13 @@ int main( int argc, char* argv[] )
             attachInfo.countActionSets = 1;
             attachInfo.actionSets = &vrState.actionSet;
             xr_check(xrAttachSessionActionSets(vrState.session, &attachInfo), "Falha ao anexar ActionSets");
+
+            // Criar Espaço para a Mão (baseado na Action)
+            XrActionSpaceCreateInfo actionSpaceInfo = {XR_TYPE_ACTION_SPACE_CREATE_INFO};
+            actionSpaceInfo.action = vrState.handPoseAction;
+            actionSpaceInfo.poseInActionSpace.orientation = {0,0,0,1};
+            actionSpaceInfo.poseInActionSpace.position = {0,0,0};
+            xr_check(xrCreateActionSpace(vrState.session, &actionSpaceInfo, &vrState.handSpace), "Falha ao criar Hand Space");
 
             // --- INÍCIO PASSO 1: CRIAR E INICIAR O PASSTHROUGH ---
             if (passthrough_supported) {
@@ -1314,8 +1478,13 @@ int main( int argc, char* argv[] )
 
                 updateModel(); // Atualiza a matriz do modelo (rotação, etc.)
                 handleKeyboardInput(window, true /* is_vr_mode */); // Passa o flag de VR
-                handleControllerInput(vrState); // Processa input do controle VR
-                // O objeto permanece estático. g_position é controlado apenas pela GUI para o reflexo.
+                
+                // Atualiza input e lógica de instâncias
+                // Precisamos de um tempo de display previsto aproximado para a lógica, ou usar o do frame anterior
+                // Aqui usaremos o tempo atual apenas para lógica, o render usa o predictedDisplayTime correto
+                XrTime logicTime = 0; // Será atualizado dentro do loop de frame se necessário, mas para input simples ok
+                
+                // Nota: handleControllerInput movido para dentro do xrBeginFrame/WaitFrame loop para ter o tempo correto
 
                 if (camera_changed) {
                     params.subframe_index = 0;
@@ -1367,6 +1536,9 @@ int main( int argc, char* argv[] )
                 // 2. Iniciar o frame
                 xr_check(xrBeginFrame(vrState.session, nullptr), "Falha em xrBeginFrame");
 
+                // Processar Input com o tempo correto do frame
+                handleControllerInput(vrState, referenceSpace, frameState.predictedDisplayTime);
+
                 // 3. Preparar as views para cada olho
                 std::vector<XrView> views(viewCount, { XR_TYPE_VIEW });
                 XrViewState viewState = { XR_TYPE_VIEW_STATE };
@@ -1378,6 +1550,9 @@ int main( int argc, char* argv[] )
                 xr_check(xrLocateViews(vrState.session, &viewLocateInfo, &viewState,
                             viewCount, &viewCountOutput, views.data()),
                          "Falha em xrLocateViews");
+
+                // Atualizar o IAS na GPU antes de renderizar
+                buildDynamicIAS(scene);
 
                 std::vector<XrCompositionLayerProjectionView> projectionViews(viewCount, {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW});
 
@@ -1594,6 +1769,8 @@ int main( int argc, char* argv[] )
             params.g2_shs = gaussian2.shs_cuda;
             params.g2_cov3d9 = gaussian2.cov3d9_cuda;
             initCameraState( scene );
+            
+            // Inicializar matrizes de objeto como identidade
             camera.setFovY(60.f);
 
 
