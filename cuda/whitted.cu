@@ -81,8 +81,6 @@ extern "C" __global__ void __raygen__pinhole()
         const float3 ray_origin = ray_origin_world;
         const float3 ray_direction = ray_direction_world;
 
-        float3 sample_result = make_float3(0.f);
-        float sample_alpha = 1.0f;
 
         if (whitted::params.mode != 1) {
             whitted::PayloadRadiance payload;
@@ -125,13 +123,11 @@ extern "C" __global__ void __raygen__pinhole()
                         1e16f,  // tmax
                         &payload );
 
-            sample_result = payload.result;
-            sample_alpha = payload.alpha;
+            result = payload.result;
+            alpha = payload.alpha;
 
         }
-        result += sample_result;
-        alpha += sample_alpha;
-    }
+    } // Fim do loop de samples
 
     result /= static_cast<float>(samples_per_frame);
     alpha /= static_cast<float>(samples_per_frame);
@@ -263,7 +259,6 @@ extern "C" __global__ void __anyhit__occlusion()
 
 extern "C" __global__ void __miss__radiance()
 {
-    // const whitted::HitRecord* hitRecord = reinterpret_cast<whitted::HitRecord*>( optixGetSbtDataPointer() );
     uint64_t payload_ptr = (uint64_t)(optixGetPayload_5()) | ((uint64_t)(optixGetPayload_6()) << 32);
     whitted::PayloadRadiance* payload = reinterpret_cast<whitted::PayloadRadiance*>(payload_ptr);
 
@@ -466,20 +461,45 @@ extern "C" __global__ void __closesthit__radiance()
     // Implementação do 3D Gaussian
     unsigned int seed = whitted::getPayloadSeed();
 
-    // roughness = whitted::params.roughness;
     if ( metallic > 0.5f) {
-    // if (metallic > 0.99f) {
-        float3 roughNormal = N;
-        roughNormal.x -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
-        roughNormal.y -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
-        roughNormal.z -= (rnd(seed)/2 * roughness) - (rnd(seed)/2 * roughness);
+        // --- INÍCIO DA MELHORIA GLOSSY (GGX Importance Sampling) ---
+        float3 R;
+        if (roughness > 0.001f) {
+            // Gerar uma base ortonormal (ONB) em torno da normal N
+            float3 b1, b2;
+            if (fabsf(N.z) > 0.7f) {
+                float3 v = make_float3(0, 1, 0);
+                b1 = normalize(cross(v, N));
+                b2 = cross(N, b1);
+            } else {
+                float3 v = make_float3(0, 0, 1);
+                b1 = normalize(cross(v, N));
+                b2 = cross(N, b1);
+            }
+
+            // Amostragem GGX para a normal da microfaceta (H)
+            float alpha = roughness * roughness;
+            float2 xi = make_float2(rnd(seed), rnd(seed));
+            float phi = 2.0f * M_PIf * xi.x;
+            float cosTheta = sqrtf((1.0f - xi.y) / (1.0f + (alpha * alpha - 1.0f) * xi.y));
+            float sinTheta = sqrtf(fmaxf(0.0f, 1.0f - cosTheta * cosTheta));
+            float3 H_local = make_float3(sinTheta * cosf(phi), sinTheta * sinf(phi), cosTheta);
+            float3 H = b1 * H_local.x + b2 * H_local.y + N * H_local.z;
+
+            R = normalize(reflect(V, H));
+
+            // Se o raio refletido apontar para dentro da superfície, usamos o reflexo perfeito
+            if (dot(R, N) < 0.0f) R = normalize(reflect(V, N));
+        } else {
+            R = normalize(reflect(V, N));
+        }
+        // --- FIM DA MELHORIA GLOSSY ---
+
         sutil::Matrix4x4 modelMatrix(whitted::params.gaussianModelMatrix);
 
         uint64_t payload_ptr = (uint64_t)(optixGetPayload_5()) | ((uint64_t)(optixGetPayload_6()) << 32);
         whitted::PayloadRadiance* payload = reinterpret_cast<whitted::PayloadRadiance*>(payload_ptr);
 
-        // View vector correto
-        float3 R = normalize(reflect(V, N));
         float3 Pn = make_float3(modelMatrix * make_float4(P, 1.f));
         float3 Rn = normalize(make_float3(modelMatrix * make_float4(R, 0.f)));
         Rn.y *= -1; // Correção de coordenadas para o sistema de textura    
@@ -526,11 +546,8 @@ extern "C" __global__ void __closesthit__radiance()
             // O resultado do raio secundário é o resultado final para este hit.
             whitted::setPayloadResult( secondary_payload.result );
             payload->alpha = secondary_payload.alpha;
-            
 
             spec_color = secondary_payload.result;
-            // return;
-
         }
         else if( whitted::params.mode == 2 || whitted::params.mode == 3) { //Octree Mode
             // Converter o vetor de reflexão para coordenadas UV
@@ -539,18 +556,9 @@ extern "C" __global__ void __closesthit__radiance()
             float u = 0.5f + atan2f(direction.z, direction.x) / (2.0f * M_PIf);
             float v = 0.5f - asinf(direction.y) / M_PIf;
 
-            // Usar a função tex2D do CUDA para amostrar a textura
-            // O OptiX 7 não tem uma função de amostragem própria, mas usa as do CUDA.
-            // As coordenadas u e v devem estar no intervalo [0, 1].
             float4 texture_color = tex2D<float4>(whitted::params.reflection_texture, u, v);
-
-            // Set the ray payload with the color from the environment map
             
-            // float3 result_color = convertSRGBToRGB(make_float3(texture_color.x, texture_color.y, texture_color.z));
             spec_color = convertSRGBToRGB(make_float3(texture_color.x, texture_color.y, texture_color.z));
-
-            // whitted::setPayloadResult( result_color );
-            // return;
         }
         result = diff_color + spec_color;
     }

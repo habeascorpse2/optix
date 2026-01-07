@@ -684,34 +684,13 @@ void initLaunchParams( const sutil::GaussianScene& gscene, const sutil::Scene& s
 
     params.subframe_index = 0u;
 
-    // const float loffset = scene.aabb().maxExtent(); // AVISO: Variável não utilizada
-
-    // TODO: add light support to sutil::Scene
     std::vector<Light> lights( 1);
     lights[0].type            = Light::Type::POINT;
     lights[0].point.color     = {1.0f, 1.0f, 1.0f};
     lights[0].point.intensity = .8f;
     lights[0].point.position  = make_float3(1.4,4.6,3);
     lights[0].point.falloff   = Light::Falloff::QUADRATIC; //{26.545f, 12.8f, 2.4f},
-
-    // lights[1].type            = Light::Type::POINT;
-    // lights[1].point.color     = {1.0f, 1.0f, 1.0f};
-    // lights[1].point.intensity = 5.0f;
-    // lights[1].point.position  = make_float3(0.0f, 2.8f, 0.0f);
-    // lights[1].point.falloff   = Light::Falloff::QUADRATIC;
-
-    // lights[2].type            = Light::Type::POINT;
-    // lights[2].point.color     = {1.0f, 1.0f, 0.8f};
-    // lights[2].point.intensity = 2.0f;
-    // lights[2].point.position  = make_float3(4,4.9,-3);
-    // lights[2].point.falloff   = Light::Falloff::QUADRATIC;
-
-    // lights[3].type            = Light::Type::POINT;
-    // lights[3].point.color     = {1.0f, 1.0f, 0.8f};
-    // lights[3].point.intensity = 2.0f;
-    // lights[3].point.position  = make_float3(-4,4.9,-3);
-    // lights[3].point.falloff   = Light::Falloff::QUADRATIC;
-
+    
     params.lights.count  = static_cast<uint32_t>( lights.size() );
     CUDA_CHECK( cudaMalloc(
                 reinterpret_cast<void**>( &params.lights.data ),
@@ -726,7 +705,7 @@ void initLaunchParams( const sutil::GaussianScene& gscene, const sutil::Scene& s
     
     // Se estiver em modo VR com ALVR, usamos verde-limão para chroma key.
     // Caso contrário, usamos a cor de fundo normal.
-    params.miss_color   = make_float3( 1.0f, 1.0f, 0.0f );
+    params.miss_color   = make_float3( 1.0f, 0.0f, 1.0f );
 
     //CUDA_CHECK( cudaStreamCreate( &stream ) );
     CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_params ), sizeof( whitted::LaunchParams ) ) );
@@ -943,6 +922,11 @@ void printGui(double frameTime) {
     }
 
     ImGui::Separator();
+
+    ImGui::Text("Environment");
+    if (ImGui::ColorEdit3("Miss Color", &params.miss_color.x, ImGuiColorEditFlags_DisplayRGB)) {
+        camera_changed = true; // Reseta acumulação para aplicar a nova cor
+    }
 
     ImGui::Text("Mode");
     if (ImGui::RadioButton("Ray traced", &params.mode, 0))
@@ -1769,6 +1753,23 @@ int main( int argc, char* argv[] )
             params.g2_shs = gaussian2.shs_cuda;
             params.g2_cov3d9 = gaussian2.cov3d9_cuda;
             initCameraState( scene );
+
+            // Criar uma instância padrão para o modo Desktop
+            if (g_instances.empty()) {
+                OptixInstance default_instance = {};
+                float transform[12] = {
+                    1, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0, 0, 1, 0
+                };
+                memcpy(default_instance.transform, transform, sizeof(float) * 12);
+                default_instance.instanceId = 0;
+                default_instance.visibilityMask = 255;
+                default_instance.traversableHandle = g_scene_gas;
+                
+                g_instances.push_back(default_instance);
+                buildDynamicIAS(scene);
+            }
             
             // Inicializar matrizes de objeto como identidade
             camera.setFovY(60.f);
