@@ -352,7 +352,7 @@ extern "C" __global__ void __miss__radiance()
         }
         else {
             whitted::setPayloadResult( whitted::params.miss_color );
-            payload->alpha = 0.0f;
+            payload->alpha = 1.0f;
         }
         
     }
@@ -504,6 +504,8 @@ extern "C" __global__ void __closesthit__radiance()
         float3 Rn = normalize(make_float3(modelMatrix * make_float4(R, 0.f)));
         Rn.y *= -1; // Correção de coordenadas para o sistema de textura    
         Pn.y  *= -1; // Correção de coordenadas para o sistema de textura  
+        Rn.z *= -1; // Correção de coordenadas para o sistema de textura    
+        Pn.z  *= -1; // Correção de coordenadas para o sistema de textura  
 
         //
         //  Traça o raio para as Gaussianas

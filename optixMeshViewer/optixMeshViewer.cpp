@@ -179,7 +179,7 @@ float   fov = 60;
 
 glm::vec3 g_position;
 glm::vec3 g_rotation;
-glm::vec3 g_scale;
+float g_scale;
 glm::mat4 proj;
 glm::mat4 model;
 
@@ -730,7 +730,7 @@ void updateModel( ) {
     params.gaussianModelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.z), make_float3(0,0,1) );
     params.gaussianModelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.y), make_float3(0,1,0) );
     params.gaussianModelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.x), make_float3(1,0,0) );
-    params.gaussianModelMatrix *= sutil::Matrix4x4::scale( make_float3(g_scale.x, g_scale.y, g_scale.z) );
+    params.gaussianModelMatrix *= sutil::Matrix4x4::scale( make_float3(g_scale) );
 }
 
 
@@ -907,7 +907,7 @@ void printGui(double frameTime) {
         camera_changed = true;
     }
 
-    if (ImGui::SliderFloat("HMD scale position", &nav_scale, 1.f, 100.f)) {
+    if (ImGui::SliderFloat("HMD scale position", &nav_scale, 1.f, 5.f)) {
         // camera_changed = true;
     }
 
@@ -957,12 +957,12 @@ void printGui(double frameTime) {
     if (ImGui::SliderFloat("Position Z", &g_position.z, -50.f, 50.f))
         camera_changed = true;
 
-    if (ImGui::SliderFloat("Scale X", &g_scale.x, -1.f, 1.f))
+    if (ImGui::SliderFloat("Scale ", &g_scale, 0.1f, 6.f))
         camera_changed = true;
-    if (ImGui::SliderFloat("Scale Y", &g_scale.y, -1.f, 1.f))
-        camera_changed = true;
-    if (ImGui::SliderFloat("Scale Z", &g_scale.z, -1.f, 1.f))
-        camera_changed = true;
+    // if (ImGui::SliderFloat("Scale Y", &g_scale.y, -1.f, 4.f))
+    //     camera_changed = true;
+    // if (ImGui::SliderFloat("Scale Z", &g_scale.z, -1.f, 4.f))
+    //     camera_changed = true;
     
     ImGui::Text("Frame time %.1f ms", frameTime);
     
@@ -1120,7 +1120,7 @@ int main( int argc, char* argv[] )
             params.reflection_texture = reflection_texture;
             g_position = glm::vec3(0, 0, 0);
             g_rotation = glm::vec3(0, 0, 0);
-            g_scale = glm::vec3(1.f, 1.f, 1.f);
+            g_scale = 5.3f; //glm::vec3(1.f, 1.f, 1.f);
             params.mode = 0;
             updateModel();
             params.g_pos = gaussian.pos_cuda;
@@ -1740,7 +1740,7 @@ int main( int argc, char* argv[] )
             params.reflection_texture = reflection_texture;
             g_position = glm::vec3(0, 0, 0);
             g_rotation = glm::vec3(0, 0, 0);
-            g_scale = glm::vec3(1.f, 1.f, 1.f);
+            g_scale = 1.0f; //glm::vec3(1.f, 1.f, 1.f);
             params.mode = 0;
             updateModel();
             params.g_pos = gaussian.pos_cuda;
