@@ -1762,6 +1762,18 @@ int main( int argc, char* argv[] )
                     0, 1, 0, 0,
                     0, 0, 1, 0
                 };
+
+                // Preserva a transformação (escala/rotação) definida no arquivo do modelo, se houver.
+                const float* m = nullptr;
+                if (!scene.instances().empty()) m = scene.instances()[0]->transform.getData();
+
+                if (m) {
+                    // Converte de Column-Major (GL) para Row-Major (OptiX) e preserva a translação
+                    transform[0] = m[0];  transform[1] = m[4];  transform[2] = m[8];  transform[3] = m[12];
+                    transform[4] = m[1];  transform[5] = m[5];  transform[6] = m[9];  transform[7] = m[13];
+                    transform[8] = m[2];  transform[9] = m[6];  transform[10]= m[10]; transform[11]= m[14];
+                }
+
                 memcpy(default_instance.transform, transform, sizeof(float) * 12);
                 default_instance.instanceId = 0;
                 default_instance.visibilityMask = 255;
