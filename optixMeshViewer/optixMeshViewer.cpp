@@ -90,22 +90,17 @@
 #include <string>
 #include <thread>
 #include <chrono> 
+#include <ctime>
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
 #include "imgui/imgui_stdlib.h"
 #include <glm/gtc/matrix_transform.hpp>
 
-// --- INÍCIO DAS ADIÇÕES PARA VR ---
-// Agora, defina as macros do OpenXR.
 #define XR_USE_PLATFORM_XLIB
 #define XR_USE_GRAPHICS_API_OPENGL
 #include <openxr/openxr.h>
 
-// Ordem de inclusão correta para garantir que todos os tipos sejam definidos:
-// 1. openxr.h (tipos base)
-// 2. openxr_reflection.h (tipos de evento e strings)
-// 3. openxr_platform.h (tipos específicos da plataforma)
 #include <openxr/openxr_reflection.h> // Define XR_TYPE_SESSION_STATE_CHANGED
 #include <openxr/openxr_platform.h>   // Define XrGraphicsBindingOpenGLXlibKHR
 
@@ -149,6 +144,7 @@ struct VRState
 
 #include "gaussian.hpp"
 #include "OctreeGaussian.hpp"
+#include "VRLogger.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <support/tinygltf/stb_image.h>
@@ -216,6 +212,9 @@ bool takeSnap = false;
 
 bool keepY = false;
 float yAxis = 0.f;
+bool g_is_logging = false;
+std::string g_logFilename = "tracking_log";
+VRLogger* g_logger = nullptr;
 
  
 // Adicione esta função em optixMeshViewer.cpp, antes do main()
@@ -710,6 +709,7 @@ void initLaunchParams( const sutil::GaussianScene& gscene, const sutil::Scene& s
     //CUDA_CHECK( cudaStreamCreate( &stream ) );
     CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_params ), sizeof( whitted::LaunchParams ) ) );
 
+
     params.ghandle = gscene.traversableHandle1();
     params.ghandle2 = gscene.traversableHandle2();
     
@@ -731,6 +731,7 @@ void updateModel( ) {
     params.gaussianModelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.y), make_float3(0,1,0) );
     params.gaussianModelMatrix *= sutil::Matrix4x4::rotate( glm::radians(g_rotation.x), make_float3(1,0,0) );
     params.gaussianModelMatrix *= sutil::Matrix4x4::scale( make_float3(g_scale) );
+
 }
 
 
@@ -819,7 +820,7 @@ void launchSubframe( sutil::CUDAOutputBuffer<uchar4>& output_buffer, const sutil
                 ) );
     output_buffer.unmap();
     CUDA_SYNC_CHECK(); 
-    // --- FIM DA CORREÇÃO DEFINITIVA ---
+
 }
 
 
@@ -894,7 +895,28 @@ void printGui(double frameTime) {
     
     if (ImGui::Button("Save"))
         takeSnap = true;
+
+    ImGui::InputText("Log", &g_logFilename);
     ImGui::SameLine();
+    if (g_is_logging) {
+        if (ImGui::Button("Stop")) {
+            g_is_logging = false;
+            if (g_logger) {
+                delete g_logger;
+                g_logger = nullptr;
+            }
+            std::cout << "Logging stopped." << std::endl;
+        }
+    } else {
+        if (ImGui::Button("Record")) {
+            std::string finalName = g_logFilename;
+            if (finalName.find(".json") == std::string::npos)
+                finalName += ".json";
+            g_logger = new VRLogger(finalName);
+            g_is_logging = true;
+            std::cout << "Logging started." << std::endl;
+        }
+    }
 
     ImGui::Text("Camera Properties");
     if (ImGui::SliderFloat("Near", &near, 0.1f, 1.f)) {
@@ -1077,8 +1099,6 @@ int main( int argc, char* argv[] )
         // printUsageAndExit( argv[0] );
     }
 
-
-    // --- INÍCIO DA LÓGICA DE SELEÇÃO DE MODO ---
     if (use_vr)
     {
         std::cout << "Iniciando em modo OpenXR VR..." << std::endl;
@@ -1088,18 +1108,17 @@ int main( int argc, char* argv[] )
 
         try
         {
-            // --- INÍCIO DA CORREÇÃO: Ordem de Inicialização ---
             // 1. Inicializar um contexto OpenGL via GLFW
             window = sutil::initUI( "VR Gaussians", width, height );
 
-            // --- INÍCIO DA ADIÇÃO: Registrar callbacks de mouse e teclado para a janela VR ---
+            // Registrar callbacks de mouse e teclado para a janela VR ---
             glfwSetMouseButtonCallback  ( window, mouseButtonCallback   );
             glfwSetCursorPosCallback    ( window, cursorPosCallback     );
             glfwSetWindowSizeCallback   ( window, windowSizeCallback    );
             glfwSetWindowIconifyCallback( window, windowIconifyCallback );
             glfwSetKeyCallback          ( window, keyCallback           );
             glfwSetScrollCallback       ( window, scrollCallback        );
-            // --- FIM DA ADIÇÃO ---
+            // --- 
 
 
             Gaussian gaussian((uint) width,(uint) height, sutil::sampleDataFilePath(gaussianFile1.c_str()), 3, false, 0);
@@ -1455,6 +1474,7 @@ int main( int argc, char* argv[] )
             std::chrono::duration<double> render_time(0.0);
 
             camera_changed = true;
+
           
 
             while (session_running && !glfwWindowShouldClose(window))
@@ -1534,6 +1554,19 @@ int main( int argc, char* argv[] )
                 xr_check(xrLocateViews(vrState.session, &viewLocateInfo, &viewState,
                             viewCount, &viewCountOutput, views.data()),
                          "Falha em xrLocateViews");
+
+                if (viewCountOutput >= 2) {
+                    EyePose leftEye = {
+                        {views[0].pose.position.x, views[0].pose.position.y, views[0].pose.position.z},
+                        {views[0].pose.orientation.x, views[0].pose.orientation.y, views[0].pose.orientation.z, views[0].pose.orientation.w}
+                    };
+                    EyePose rightEye = {
+                        {views[1].pose.position.x, views[1].pose.position.y, views[1].pose.position.z},
+                        {views[1].pose.orientation.x, views[1].pose.orientation.y, views[1].pose.orientation.z, views[1].pose.orientation.w}
+                    };
+                    if (g_is_logging && g_logger)
+                        g_logger->log(frameState.predictedDisplayTime, leftEye, rightEye);
+                }
 
                 // Atualizar o IAS na GPU antes de renderizar
                 buildDynamicIAS(scene);
@@ -1698,6 +1731,10 @@ int main( int argc, char* argv[] )
 
                 glfwSwapBuffers(window);
                 // --- FIM DA CORREÇÃO ---
+            }
+            if (g_logger) {
+                delete g_logger;
+                g_logger = nullptr;
             }
             CUDA_CHECK( cudaFree(d_aligned_params) );
 
@@ -1899,7 +1936,6 @@ int main( int argc, char* argv[] )
             return 1;
         }
     }
-    // --- FIM DA LÓGICA DE SELEÇÃO DE MODO ---
 
     return 0;
 }

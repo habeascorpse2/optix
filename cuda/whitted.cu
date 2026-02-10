@@ -369,20 +369,9 @@ extern "C" __global__ void __closesthit__radiance()
     const whitted::HitGroupData* hit_group_data = reinterpret_cast<whitted::HitGroupData*>( optixGetSbtDataPointer() );
     const LocalGeometry          geom           = getLocalGeometry( hit_group_data->geometry_data );
     
-    // O raio que atingiu aqui está no Espaço do Objeto.
-    // Precisamos calcular P e N no Espaço do Mundo para iluminação correta.
-    
-    // FIX: Ponto de impacto exato no mundo
     const float3 P = optixGetWorldRayOrigin() + optixGetRayTmax() * optixGetWorldRayDirection();
 
-    // FIX: Obter o centro do objeto (esfera) no mundo a partir da matriz de instância
-    // A função correta é optixGetObjectToWorldTransformMatrix
-    float m[12];
-    optixGetObjectToWorldTransformMatrix(m);
-    float3 center = make_float3(m[3], m[7], m[11]);
-
-    // FIX: Normal geométrica perfeita (independente da rotação da malha)
-    float3 N = normalize(P - center);
+    float3 N = ( geom.N );
 
     // FIX: Vetor de visão intrínseco (V)
     const float3 V = optixGetWorldRayDirection();
