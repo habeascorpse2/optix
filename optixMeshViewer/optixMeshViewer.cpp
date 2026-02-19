@@ -757,6 +757,13 @@ void handleCameraUpdate( whitted::LaunchParams& params )
     
     params.eye = camera.eye();
     camera.UVWFrame( params.U, params.V, params.W );
+    
+    // Inicializar o centro da fovea (convergência dos olhos) para o modo desktop
+    float3 forward = normalize(params.W);
+    float convergence_distance = 2.0f;
+    params.fovea_center = params.eye + forward * convergence_distance;
+    
+    
     updateModel();
     
     camera_changed = false;
@@ -852,6 +859,9 @@ void initCameraState( const sutil::Scene& scene )
     trackball.setMoveSpeed( .03f );
     // trackball.setReferenceFrame( make_float3( 1.0f, 0.0f, 0.0f ), make_float3( 0.0f, 0.0f, 1.0f ), make_float3( 0.0f, 1.0f, 0.0f ) );
     // trackb
+
+    params.fovea_radius_degrees = 4.0f;      // 4° de ângulo visual para zona central
+    params.fovea_falloff_degrees = 8.0f;     // 8° total (4° + 4° de transição)
     trackball.setGimbalLock(true);
 }
 
@@ -933,6 +943,15 @@ void printGui(double frameTime) {
         // camera_changed = true;
     }
 
+    ImGui::Separator();
+    ImGui::Text("Foveated Rendering");
+    if (ImGui::SliderFloat("Central Region (degrees)", &params.fovea_radius_degrees, 0.5f, 20.0f)) {
+        camera_changed = true;
+    }
+    if (ImGui::SliderFloat("Falloff Region (degrees)", &params.fovea_falloff_degrees, 1.0f, 30.0f)) {
+        camera_changed = true;
+    }
+
     std::string eye = "Eye X:" + std::to_string(camera.eye().x) + " Y:"+ std::to_string(camera.eye().y) + " Z:" + std::to_string(camera.eye().z);
     ImGui::Text(eye.c_str());
 
@@ -944,7 +963,6 @@ void printGui(double frameTime) {
     }
 
     ImGui::Separator();
-
     ImGui::Text("Environment");
     if (ImGui::ColorEdit3("Miss Color", &params.miss_color.x, ImGuiColorEditFlags_DisplayRGB)) {
         camera_changed = true; // Reseta acumulação para aplicar a nova cor
@@ -1151,6 +1169,9 @@ int main( int argc, char* argv[] )
             params.g2_opacity = gaussian2.opacity_cuda;
             params.g2_shs = gaussian2.shs_cuda;
             params.g2_cov3d9 = gaussian2.cov3d9_cuda;
+
+            params.fovea_radius_degrees = 4.0f;      // 4° de ângulo visual para zona central
+            params.fovea_falloff_degrees = 8.0f; 
             
             // 2. Inicializar OpenXR - Verificar e Criar a Instância
             std::vector<const char*> extensions = { XR_KHR_OPENGL_ENABLE_EXTENSION_NAME };
@@ -1627,6 +1648,13 @@ int main( int argc, char* argv[] )
                     params.U = make_float3(u_vec.x, u_vec.y, u_vec.z);
                     params.V = make_float3(v_vec.x, v_vec.y, v_vec.z);
                     params.W = make_float3(w_vec.x, w_vec.y, w_vec.z);
+                    
+                    // Calcular o ponto de convergência da fovea
+                    glm::vec3 view_direction = glm::normalize(glm::vec3(center_x, center_y, -w_len));
+                    float convergence_distance = w_len;
+                    glm::vec3 fovea_world = glm::vec3(params.eye.x, params.eye.y, params.eye.z) + 
+                                             xr_orientation * (view_direction * convergence_distance);
+                    params.fovea_center = make_float3(fovea_world.x, fovea_world.y, fovea_world.z);
                     
 
                     params.subframe_index = 0;

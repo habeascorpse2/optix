@@ -217,6 +217,7 @@ struct LaunchParams
     float3                   V;
     float3                   W;
     float3                   miss_color;
+    float3                   fovea_center;  // Centro da zona foveada em espaço mundo
     
     unsigned int             width;
     unsigned int             height;
@@ -228,6 +229,8 @@ struct LaunchParams
     float roughness;
     float                    near;
     float                    fov;
+    float                    fovea_radius_degrees;  // Raio da zona foveada em graus visuais
+    float                    fovea_falloff_degrees; // Zona de transição em graus
     bool                     is_vr;
 
 };

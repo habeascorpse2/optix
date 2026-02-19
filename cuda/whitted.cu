@@ -66,8 +66,8 @@ extern "C" __global__ void __raygen__pinhole()
     for (int i = 0; i < samples_per_frame; ++i) {
         // The center of each pixel is at fraction (0.5,0.5)
         float2 subpixel_jitter = make_float2( 0.5f, 0.5f );
-        // if (samples_per_frame > 1 || subframe_index > 0)
-        //     subpixel_jitter = make_float2( rnd( seed ), rnd( seed ) );
+        if (samples_per_frame > 1 || subframe_index > 0)
+            subpixel_jitter = make_float2( rnd( seed ), rnd( seed ) );
 
         const float2 d =
             2.0f
@@ -90,33 +90,71 @@ extern "C" __global__ void __raygen__pinhole()
             payload.htype = 0;
             payload.alpha = 1.0f;
 
-            float hy = launch_dims.y / 2;
-            float hx = launch_dims.x / 2;
-            float fov_a = hy * 0.3f;
-            float pointy = launch_idx.y - hy;
-            float pointx = launch_idx.x - hx;
+            // Foveated Rendering - 3 regiões baseadas em ângulos visuais em graus
+            
+            // Converter o ponto de convergência para coordenadas de tela
+            float3 fovea_center_world = whitted::params.fovea_center;
+            float3 fovea_relative = fovea_center_world - eye;
+            
+            // Projetar o ponto de convergência nas coordenadas de câmera
+            // Correção para projeção em frustums assimétricos (VR)
+            float3 U_norm = normalize(U);
+            float3 V_norm = normalize(V);
+            float3 Z_cam = normalize(cross(U, V)); 
 
-            if (pointx < 0)
-                pointx *= -1;
-            if (pointy < 0)
-                pointy *= -1;
+            float w_len_proj = -dot(W, Z_cam);
+            float center_x_proj = dot(W, U_norm);
+            float center_y_proj = dot(W, V_norm);
+            
+            float rz = dot(fovea_relative, Z_cam);
+            float rx = dot(fovea_relative, U_norm);
+            float ry = dot(fovea_relative, V_norm);
+            
+            float d_x = 0.0f;
+            float d_y = 0.0f;
+            
+            if (fabsf(rz) > 1e-6f) {
+                d_x = (-w_len_proj * (rx / rz) - center_x_proj) / length(U);
+                d_y = (-w_len_proj * (ry / rz) - center_y_proj) / length(V);
+            }
 
-            float point = sqrtf((pointx * pointx) + (pointy * pointy));
-
-            if (point - fov_a >= 0.f) {
-                payload.fov = false;
+            float pixel_u = (d_x * 0.5f + 0.5f) * launch_dims.x;
+            float pixel_v = (d_y * 0.5f + 0.5f) * launch_dims.y;
+            
+            // Calcular distância do pixel atual para o centro da fovea
+            float dx = launch_idx.x - pixel_u;
+            float dy = launch_idx.y - pixel_v;
+            float dist_pixels = sqrtf(dx * dx + dy * dy);
+            
+            // Converter ângulos em graus para pixels
+            // FOV vertical = 2 * atan(height / (2 * distance_to_plane))
+            float fov_vertical_rad = 2.0f * atanf((float)launch_dims.y / (2.0f * length(V)));
+            float fov_vertical_deg = fov_vertical_rad * 57.2958f;  // radianos para graus
+            
+            // Converter ângulos da fovea para pixels
+            float pixels_per_degree = (float)launch_dims.y / fov_vertical_deg;
+            float fov_central = whitted::params.fovea_radius_degrees * pixels_per_degree;
+            float fov_transition = whitted::params.fovea_falloff_degrees * pixels_per_degree;
+            
+            // 3 regiões:
+            // 1. Região central: dist_pixels <= fov_central
+            // 2. Região de transição: fov_central < dist_pixels <= fov_transition
+            // 3. Região periférica: dist_pixels > fov_transition
+            
+            if (dist_pixels <= fov_central) {
+                // Região central - alta resolução (fov = true)
+                payload.fov = true;
+            }
+            else if (dist_pixels <= fov_transition) {
+                // Região de transição - interpolação suave
+                float transition_range = fov_transition - fov_central;
+                float opacity = (dist_pixels - fov_central) / transition_range;
+                rnd(seed) > opacity ? payload.fov = true : payload.fov = false;
             }
             else {
-                float fov_b = fov_a * (.3f);
-                if (point - fov_a + fov_b >= 0) {
-                    float opacity = (point - fov_a + fov_b) / fov_b ;
-                    rnd(seed) > opacity ? payload.fov = true: payload.fov = false;
-                }
-                else
-                    payload.fov = true;
+                // Região periférica - baixa resolução (fov = false)
+                payload.fov = false;
             }
-
-            // payload.fov = true;
 
             traceRadiance( whitted::params.handle, ray_origin, ray_direction,
                         0.00f,  // tmin
