@@ -61,99 +61,113 @@ extern "C" __global__ void __raygen__pinhole()
     float3 result = make_float3(0.f);
     float alpha = 0.0f;
 
-    const int samples_per_frame = 1;
+    int samples_per_frame = 1;
 
-    for (int i = 0; i < samples_per_frame; ++i) {
-        // The center of each pixel is at fraction (0.5,0.5)
-        float2 subpixel_jitter = make_float2( 0.5f, 0.5f );
-        if (samples_per_frame > 1 || subframe_index > 0)
-            subpixel_jitter = make_float2( rnd( seed ), rnd( seed ) );
+    if (whitted::params.mode != 1) {
+        whitted::PayloadRadiance payload;
+        payload.result     = make_float3( 0.0f );
+        payload.depth      = 0;
+        payload.seed = seed;
+        payload.htype = 0;
+        payload.alpha = 1.0f;
 
-        const float2 d =
-            2.0f
-                * make_float2( ( static_cast<float>( launch_idx.x ) + subpixel_jitter.x ) / static_cast<float>( launch_dims.x ),
-                               ( static_cast<float>( launch_idx.y ) + subpixel_jitter.y ) / static_cast<float>( launch_dims.y ) )
-            - 1.0f;
+        // Foveated Rendering - 3 regiões baseadas em ângulos visuais em graus
         
-        float3 ray_direction_world = normalize( d.x * U + d.y * V + W );
-        float3 ray_origin_world    = eye;
+        // Converter o ponto de convergência para coordenadas de tela
+        float3 fovea_center_world = whitted::params.fovea_center;
+        float3 fovea_relative = fovea_center_world - eye;
+        
+        // Projetar o ponto de convergência nas coordenadas de câmera
+        // Correção para projeção em frustums assimétricos (VR)
+        float3 U_norm = normalize(U);
+        float3 V_norm = normalize(V);
+        float3 Z_cam = normalize(cross(U, V)); 
 
-        const float3 ray_origin = ray_origin_world;
-        const float3 ray_direction = ray_direction_world;
+        float w_len_proj = -dot(W, Z_cam);
+        float center_x_proj = dot(W, U_norm);
+        float center_y_proj = dot(W, V_norm);
+        
+        float rz = dot(fovea_relative, Z_cam);
+        float rx = dot(fovea_relative, U_norm);
+        float ry = dot(fovea_relative, V_norm);
+        
+        float d_x = 0.0f;
+        float d_y = 0.0f;
+        
+        if (fabsf(rz) > 1e-6f) {
+            d_x = (-w_len_proj * (rx / rz) - center_x_proj) / length(U);
+            d_y = (-w_len_proj * (ry / rz) - center_y_proj) / length(V);
+        }
 
+        float pixel_u = (d_x * 0.5f + 0.5f) * launch_dims.x;
+        float pixel_v = (d_y * 0.5f + 0.5f) * launch_dims.y;
+        
+        // Calcular distância do pixel atual para o centro da fovea
+        float dx = launch_idx.x - pixel_u;
+        float dy = launch_idx.y - pixel_v;
+        float dist_pixels = sqrtf(dx * dx + dy * dy);
+        
+        // Converter ângulos em graus para pixels
+        // FOV vertical = 2 * atan(height / (2 * distance_to_plane))
+        float fov_vertical_rad = 2.0f * atanf((float)launch_dims.y / (2.0f * length(V)));
+        float fov_vertical_deg = fov_vertical_rad * 57.2958f;  // radianos para graus
+        
+        // Converter ângulos da fovea para pixels
+        float pixels_per_degree = (float)launch_dims.y / fov_vertical_deg;
+        float fov_central = whitted::params.fovea_radius_degrees * pixels_per_degree;
+        float fov_transition = whitted::params.fovea_falloff_degrees * pixels_per_degree;
+        
+        // 3 regiões:
+        // 1. Região central: dist_pixels <= fov_central
+        // 2. Região de transição: fov_central < dist_pixels <= fov_transition
+        // 3. Região periférica: dist_pixels > fov_transition
+        
+        bool is_transition_region = false;
+        float transition_blend = 0.0f;
+        
+        if (dist_pixels <= fov_central) {
+            // Região central - alta resolução (fov = true)
+            payload.fov = true;
+            samples_per_frame = 1;
+        }
+        else if (dist_pixels <= fov_transition) {
+            // Região de transição - blend de ambas as regiões
+            float transition_range = fov_transition - fov_central;
+            transition_blend = (dist_pixels - fov_central) / transition_range;
+            is_transition_region = true;
+            samples_per_frame = 16; // Muito mais amostras para suavizar a transição
+        }
+        else {
+            // Região periférica - baixa resolução (fov = false)
+            payload.fov = false;
+            samples_per_frame = 1;
+        }
+        
+        for (int i = 0; i < samples_per_frame; ++i) {
+            // The center of each pixel is at fraction (0.5,0.5)
+            float2 subpixel_jitter = make_float2( 0.5f, 0.5f );
+            // if (samples_per_frame > 1 || subframe_index > 0)
+            //     subpixel_jitter = make_float2( rnd( seed ), rnd( seed ) );
 
-        if (whitted::params.mode != 1) {
-            whitted::PayloadRadiance payload;
-            payload.result     = make_float3( 0.0f );
-            payload.depth      = 0;
-            payload.seed = seed;
-            payload.htype = 0;
-            payload.alpha = 1.0f;
+            const float2 d =
+                2.0f
+                    * make_float2( ( static_cast<float>( launch_idx.x ) + subpixel_jitter.x ) / static_cast<float>( launch_dims.x ),
+                                ( static_cast<float>( launch_idx.y ) + subpixel_jitter.y ) / static_cast<float>( launch_dims.y ) )
+                - 1.0f;
+            
+            float3 ray_direction_world = normalize( d.x * U + d.y * V + W );
+            float3 ray_origin_world    = eye;
 
-            // Foveated Rendering - 3 regiões baseadas em ângulos visuais em graus
-            
-            // Converter o ponto de convergência para coordenadas de tela
-            float3 fovea_center_world = whitted::params.fovea_center;
-            float3 fovea_relative = fovea_center_world - eye;
-            
-            // Projetar o ponto de convergência nas coordenadas de câmera
-            // Correção para projeção em frustums assimétricos (VR)
-            float3 U_norm = normalize(U);
-            float3 V_norm = normalize(V);
-            float3 Z_cam = normalize(cross(U, V)); 
+            const float3 ray_origin = ray_origin_world;
+            const float3 ray_direction = ray_direction_world;
 
-            float w_len_proj = -dot(W, Z_cam);
-            float center_x_proj = dot(W, U_norm);
-            float center_y_proj = dot(W, V_norm);
-            
-            float rz = dot(fovea_relative, Z_cam);
-            float rx = dot(fovea_relative, U_norm);
-            float ry = dot(fovea_relative, V_norm);
-            
-            float d_x = 0.0f;
-            float d_y = 0.0f;
-            
-            if (fabsf(rz) > 1e-6f) {
-                d_x = (-w_len_proj * (rx / rz) - center_x_proj) / length(U);
-                d_y = (-w_len_proj * (ry / rz) - center_y_proj) / length(V);
-            }
-
-            float pixel_u = (d_x * 0.5f + 0.5f) * launch_dims.x;
-            float pixel_v = (d_y * 0.5f + 0.5f) * launch_dims.y;
-            
-            // Calcular distância do pixel atual para o centro da fovea
-            float dx = launch_idx.x - pixel_u;
-            float dy = launch_idx.y - pixel_v;
-            float dist_pixels = sqrtf(dx * dx + dy * dy);
-            
-            // Converter ângulos em graus para pixels
-            // FOV vertical = 2 * atan(height / (2 * distance_to_plane))
-            float fov_vertical_rad = 2.0f * atanf((float)launch_dims.y / (2.0f * length(V)));
-            float fov_vertical_deg = fov_vertical_rad * 57.2958f;  // radianos para graus
-            
-            // Converter ângulos da fovea para pixels
-            float pixels_per_degree = (float)launch_dims.y / fov_vertical_deg;
-            float fov_central = whitted::params.fovea_radius_degrees * pixels_per_degree;
-            float fov_transition = whitted::params.fovea_falloff_degrees * pixels_per_degree;
-            
-            // 3 regiões:
-            // 1. Região central: dist_pixels <= fov_central
-            // 2. Região de transição: fov_central < dist_pixels <= fov_transition
-            // 3. Região periférica: dist_pixels > fov_transition
-            
-            if (dist_pixels <= fov_central) {
-                // Região central - alta resolução (fov = true)
-                payload.fov = true;
-            }
-            else if (dist_pixels <= fov_transition) {
-                // Região de transição - interpolação suave
-                float transition_range = fov_transition - fov_central;
-                float opacity = (dist_pixels - fov_central) / transition_range;
-                rnd(seed) > opacity ? payload.fov = true : payload.fov = false;
-            }
-            else {
-                // Região periférica - baixa resolução (fov = false)
-                payload.fov = false;
+            // Na região de transição, blend entre FOV alto e baixo proporcionalmente
+            if (is_transition_region) {
+                float random_val = rnd(seed);
+                
+                // Proporção de amostras: mais fov=true no início (transition_blend baixo)
+                // mais fov=false no final (transition_blend alto)
+                payload.fov = (random_val < (1.0f - transition_blend));
             }
 
             traceRadiance( whitted::params.handle, ray_origin, ray_direction,
@@ -161,11 +175,11 @@ extern "C" __global__ void __raygen__pinhole()
                         1e16f,  // tmax
                         &payload );
 
-            result = payload.result;
-            alpha = payload.alpha;
+            result += payload.result;
+            alpha += payload.alpha;
 
-        }
-    } // Fim do loop de samples
+        }// Fim do loop de samples
+    } 
 
     result /= static_cast<float>(samples_per_frame);
     alpha /= static_cast<float>(samples_per_frame);
@@ -209,10 +223,8 @@ extern "C" __global__ void __intersection__()
 
     
     const float3 g_mean = getPos(prim_idx,payload->fov)[0];
-    // Acessa a matriz correta usando aritmética de ponteiros
-    // const float* inv_transform = whitted::params.g_cov3d9[prim_idx * 9];
     float* inv_cov3d = getCov9(prim_idx,payload->fov);
-    const float Q = 4.25f;
+    const float Q = 3.25f;
 
     // 3. Obter o raio (funções do OptiX já retornam float3)
     const float3 ray_origin = optixGetWorldRayOrigin();
@@ -248,8 +260,8 @@ extern "C" __global__ void __anyhit__radiance()
         // float3 ray_orig = payload->ray_origin;
         // float3 g_mean = make_float3(whitted::params.g_pos[gaussian_id * 3], whitted::params.g_pos[gaussian_id * 3 + 1], whitted::params.g_pos[gaussian_id * 3 + 2]);
         // node.z = calculateDistance(ray_orig, g_mean); // Distância da câmera ao ponto de interseção
-        if (node.z > .55f) // near culling
-            minstack::insert(node, &payload->gstack[0], payload->stackSize );
+        if (node.z > .15f) // near culling
+            minstack::insert(node, &payload->gstack[0], payload->stackSize, whitted::params.k_first );
 
         // Permite que o raio continue para outras interseções
         optixIgnoreIntersection();
@@ -368,7 +380,7 @@ extern "C" __global__ void __miss__radiance()
                 float3 color = get_GaussianRGB(dir, idx, payload->fov);
                 
                 float test_T = T * (1 - opacity);
-                if (test_T < 0.001f)
+                if (test_T < 0.005f)
                 {
                     break;
                 }
@@ -488,6 +500,15 @@ extern "C" __global__ void __closesthit__radiance()
     // Implementação do 3D Gaussian
     unsigned int seed = whitted::getPayloadSeed();
 
+    // Calcula a iluminação indireta (difusa) a partir do environment map usando a Normal
+    float u_diff = 0.5f + atan2f(N.z, N.x) / (2.0f * M_PIf);
+    float v_diff = 0.5f - asinf(N.y) / M_PIf;
+    float4 tex_diff = tex2D<float4>(whitted::params.reflection_texture, u_diff, v_diff);
+    float3 indirect_diffuse = convertSRGBToRGB(make_float3(tex_diff.x, tex_diff.y, tex_diff.z));
+
+    // Aplica a iluminação indireta à cor difusa do objeto
+    diff_color *= indirect_diffuse;
+
     if ( metallic > 0.5f) {
         // --- INÍCIO DA MELHORIA GLOSSY (GGX Importance Sampling) ---
         float3 R;
@@ -589,10 +610,10 @@ extern "C" __global__ void __closesthit__radiance()
             
             spec_color = convertSRGBToRGB(make_float3(texture_color.x, texture_color.y, texture_color.z));
         }
-        result = diff_color + spec_color;
+        result += diff_color + spec_color;
     }
     else   
-        result = make_float3(base_color);
+        result += diff_color;
 
 
 

@@ -392,7 +392,7 @@ bool cubeIntersectsNode(const Cube&  node, const Cube& cube) {
         return true;
     }
 
-__device__ int searchIntersectingNodes(OctreeNodeD* nodes, const glm::vec3& origin, const glm::vec3& direction, octnode *octStack,const glm::mat4& viewMatrix, const int& level) {
+__device__ int searchIntersectingNodes(OctreeNodeD* nodes, const glm::vec3& origin, const glm::vec3& direction, octnode *octStack,const glm::mat4& viewMatrix, const int& level, int k_first) {
     
 
     int stack[256]; // Pilha para armazenar os índices dos nós a serem processados
@@ -414,7 +414,7 @@ __device__ int searchIntersectingNodes(OctreeNodeD* nodes, const glm::vec3& orig
 
             // n.type = 0;
             if (boundary.center.z > 0.2f)
-                insert(n, octStack, count);
+                insert(n, octStack, count, k_first);
         }
         // else {
         //     if (level == 1 && node.numCubes_1 > 0) {

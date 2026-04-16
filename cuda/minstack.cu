@@ -1,25 +1,32 @@
 #pragma once
 #include "whitted.h"
-#define OCTNODE_SIZE 40
 
 namespace minstack {
 
     //Não alterar
-    __device__ void heapifyUp(octnode* dtree, int &size,int index, octnode value) {
+    __device__ void heapifyUp(octnode* dtree, int &size,int index, octnode value, int k_first) {
 
-        //Verifica se o que será adicionado é menor que o último
-        //Se for menor, ele substituirá o último
-        if (size == OCTNODE_SIZE) {
-          if (dtree[size - 1].z > value.z) {
-            dtree[size - 1] = value;
-            return;
-          }
-          else 
-            return;
-        
-        }
-        else {
+        if (size >= k_first) {
+            // Se for maior que o último elemento ordenado, adiciona na parte desordenada
+            if (value.z > dtree[k_first - 1].z) {
+                if (size < whitted::GSM_MAX_SIZE) {
+                    dtree[size] = value;
+                    size++;
+                }
+                return;
+            } else {
+                // Se houver espaço, joga o antigo elemento limitrofe para a parte desordenada
+                if (size < whitted::GSM_MAX_SIZE) {
+                    dtree[size] = dtree[k_first - 1];
+                    size++;
+                }
+                // O novo elemento toma a posição final do heap e subirá
+                dtree[k_first - 1] = value;
+                index = k_first - 1;
+            }
+        } else {
             dtree[size] = value;
+            index = size;
             size++;
         }
 
@@ -66,8 +73,8 @@ namespace minstack {
 
 
     // Max Stack GSM: Gaussian Max Stack
-    __device__ void insert(octnode value, octnode* dtree, int& size) {
-        heapifyUp(dtree,size, size, value);
+    __device__ void insert(octnode value, octnode* dtree, int& size, int k_first) {
+        heapifyUp(dtree,size, size, value, k_first);
     }
 
 

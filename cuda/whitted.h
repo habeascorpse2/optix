@@ -151,7 +151,7 @@ const unsigned int NUM_ATTRIBUTE_VALUES = 4u;
 const unsigned int NUM_PAYLOAD_VALUES   = 10u;
 const unsigned int MAX_TRACE_DEPTH      = 2u;
 
-const unsigned int GSM_MAX_SIZE = 40;
+const unsigned int GSM_MAX_SIZE = 24;
 // const unsigned int gaussian_block = 200;
 const unsigned int WIDTH = 800;
 const unsigned int HEIGHT = 600;
@@ -232,6 +232,7 @@ struct LaunchParams
     float                    fovea_radius_degrees;  // Raio da zona foveada em graus visuais
     float                    fovea_falloff_degrees; // Zona de transição em graus
     bool                     is_vr;
+    int                      k_first;
 
 };
 struct PayloadRadiance

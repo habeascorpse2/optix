@@ -860,8 +860,8 @@ void initCameraState( const sutil::Scene& scene )
     // trackball.setReferenceFrame( make_float3( 1.0f, 0.0f, 0.0f ), make_float3( 0.0f, 0.0f, 1.0f ), make_float3( 0.0f, 1.0f, 0.0f ) );
     // trackb
 
-    params.fovea_radius_degrees = 4.0f;      // 4° de ângulo visual para zona central
-    params.fovea_falloff_degrees = 8.0f;     // 8° total (4° + 4° de transição)
+    params.fovea_radius_degrees = 20.0f;      // 4° de ângulo visual para zona central
+    params.fovea_falloff_degrees = 26.0f;     // 8° total (4° + 4° de transição)
     trackball.setGimbalLock(true);
 }
 
@@ -949,6 +949,10 @@ void printGui(double frameTime) {
         camera_changed = true;
     }
     if (ImGui::SliderFloat("Falloff Region (degrees)", &params.fovea_falloff_degrees, 1.0f, 30.0f)) {
+        camera_changed = true;
+    }
+
+    if (ImGui::SliderInt("K First", &params.k_first, 1, whitted::GSM_MAX_SIZE)) {
         camera_changed = true;
     }
 
@@ -1172,6 +1176,7 @@ int main( int argc, char* argv[] )
 
             params.fovea_radius_degrees = 4.0f;      // 4° de ângulo visual para zona central
             params.fovea_falloff_degrees = 8.0f; 
+            params.k_first = 8;
             
             // 2. Inicializar OpenXR - Verificar e Criar a Instância
             std::vector<const char*> extensions = { XR_KHR_OPENGL_ENABLE_EXTENSION_NAME };
@@ -1817,6 +1822,7 @@ int main( int argc, char* argv[] )
             params.g2_opacity = gaussian2.opacity_cuda;
             params.g2_shs = gaussian2.shs_cuda;
             params.g2_cov3d9 = gaussian2.cov3d9_cuda;
+            params.k_first = 8;
             initCameraState( scene );
 
             // Criar uma instância padrão para o modo Desktop

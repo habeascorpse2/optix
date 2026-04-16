@@ -111,6 +111,7 @@ bool takeSnap = false;
 
 bool keepY = false;
 float yAxis = 0.f;
+bool g_is_logging = false;
 
 oct::OctreeGaussian *octree;
 oct::OctreeGaussian *octreeLow;
@@ -473,6 +474,16 @@ void printGui(double frameTime) {
     if (ImGui::Button("Save"))
         takeSnap = true;
     ImGui::SameLine();
+
+    if (g_is_logging) {
+        if (ImGui::Button("Stop Logging")) {
+            g_is_logging = false;
+        }
+    } else {
+        if (ImGui::Button("Start Logging")) {
+            g_is_logging = true;
+        }
+    }
 
     ImGui::Text("Camera Properties");
     if (ImGui::SliderFloat("Near", &near, 0.1f, 1.f)) {

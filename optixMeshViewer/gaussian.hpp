@@ -470,7 +470,7 @@ class Gaussian {
 					radius_factor * sqrt(std::max(0.0002f, sigma[1][1])),
 					radius_factor * sqrt(std::max(0.0002f, sigma[2][2]))
 				);
-				h_size = h_size * 0.6f; // Half size for the bounding box
+				h_size = h_size * 0.55f; // Half size for the bounding box
 
 				this->hsize[i] = {h_size.x, h_size.y, h_size.z};
 				// 2. Calcule e armazene a INVERSA de M. Esta é a transformação correta S⁻¹ * Rᵀ
